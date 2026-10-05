@@ -1,0 +1,134 @@
+# -*- coding: utf-8 -*-
+"""
+RETIREMENT RUNWAY BALANCES OPTIMIZER - BLOCK 1 OF 4
+Asset-driven optimization engine cycling through all possible 22%/24% sequence 
+combinations driven purely by live Traditional 401(k) balance depletion events.
+"""
+import os
+import sys
+import itertools
+
+# Safely anchor current workspace paths to allow smooth sibling module lookups
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
+try:
+    import config
+    import run_new
+except ImportError:
+    print("[ERROR] Optimization script must be placed in the same folder as config.py and run_new.py")
+    sys.exit(1)
+
+print("[INFO] Launching Unrestricted Balance-Driven Matrix Optimization Engine...")
+def generate_all_balance_driven_combinations():
+    """ Generates all potential binary tracks and flattens them using actual executed profiles """
+    bracket_options = [22, 24]
+    unique_executed_keys = set()
+    absolute_results_pool = []
+    
+    original_schedule = getattr(config, "DYNAMIC_BRACKET_SCHEDULE", [])
+
+    print("[INFO] Walking the combination tree from 4 to 8 years...")
+    
+    # Cycle through every potential horizon depth to capture all mixed strategy tracks
+    for active_depth in range(4, 9):
+        raw_permutations = list(itertools.product(bracket_options, repeat=active_depth))
+        
+        for permutation in raw_permutations:
+            rotation_list = list(permutation)
+            
+            # Run the current pattern through your run_new.py simulation engine
+            config.DYNAMIC_BRACKET_SCHEDULE = rotation_list
+            simulation_data = run_new.run_financial_simulation(target_bracket="schedule")
+            
+            # Find the exact year the traditional 401(k) balance hits exactly zero
+            actual_clear_year = 44
+            for year_idx, year_row in enumerate(simulation_data):
+                if year_row["end_trad"] <= 0.01:
+                    actual_clear_year = year_row["year"]
+                    break
+            
+            # FORCE FULL EXPANSION: Reconstruct the complete blueprint of choices executed
+            # If the account cleared early, we map what the loop actually ran using the fallback rule
+            full_executed_pattern = []
+            for y_idx in range(1, actual_clear_year + 1):
+                if y_idx <= len(rotation_list):
+                    full_executed_pattern.append(rotation_list[y_idx - 1])
+                else:
+                    full_executed_pattern.append(getattr(config, "DEFAULT_FALLBACK_BRACKET", 22))
+            
+            # De-duplicate using the string of the full-length executed pattern
+            seq_key = str(full_executed_pattern)
+            if seq_key in unique_executed_keys:
+                continue
+            unique_executed_keys.add(seq_key)
+            
+            absolute_results_pool.append((full_executed_pattern, actual_clear_year, simulation_data))
+            
+    return absolute_results_pool, original_schedule
+def score_unrestricted_matrix(absolute_results_pool, original_schedule):
+    """ Processes the unique balance paths and tabulates life-cycle performance metrics """
+    optimization_scoreboard = []
+    
+    for clean_sequence, actual_clear_year, simulation_data in absolute_results_pool:
+        is_brokerage_broken = False
+        is_roth_penalty_hit = False
+        
+        for year_row in simulation_data:
+            if year_row["end_brokerage"] <= 0.01 and year_row["wife_age"] < 61:
+                is_brokerage_broken = True
+            for m_data in year_row["monthly_ledger"]:
+                if m_data.get("is_irs_violation", False) or m_data.get("penalty_paid", 0.00) > 0.00:
+                    is_roth_penalty_hit = True
+
+        if is_brokerage_broken and is_roth_penalty_hit:
+            risk_sig = "CRITICAL: BOTH"
+        elif is_roth_penalty_hit:
+            risk_sig = "PENALTY_LEVIED"
+        elif is_brokerage_broken:
+            risk_sig = "BROK_DEPLETED"
+        else:
+            risk_sig = "CLEAN RUNWAY"
+            
+        final_year_record = simulation_data[-1]
+        total_lifetime_taxes = sum(year_row["total_taxes"] for year_row in simulation_data)
+        ending_total_estate = final_year_record["end_brokerage"] + final_year_record["end_trad"] + final_year_record["end_roth"]
+        
+        optimization_scoreboard.append({
+            "rotation_sequence": clean_sequence,
+            "years_to_convert": actual_clear_year,
+            "lifetime_taxes_paid": total_lifetime_taxes,
+            "net_total_estate": ending_total_estate,
+            "risk_profile": risk_sig
+        })
+        
+    config.DYNAMIC_BRACKET_SCHEDULE = original_schedule
+    # Rank by highest ending estate wealth to display the most efficient paths first
+    optimization_scoreboard.sort(key=lambda x: x["net_total_estate"], reverse=True)
+    return optimization_scoreboard
+def print_complete_unrestricted_scoreboard(scoreboard_data):
+    """ Outputs the full matrix of all balance-driven variations onto your screen """
+    print("\n" + "="*125)
+    print("             RANKED SCOREBOARD: ALL POTENTIAL BALANCE-DRIVEN COMBINATIONS")
+    print("="*125)
+    print(f"{'Rank':<5} | {'Bracket Rotation Sequence Pattern':<52} | {'Years to Clear':<15} | {'Lifetime Taxes':<14} | {'Ending Net Estate':<18}")
+    print("-"*125)
+    
+    # Loops across and prints out all unique valid matrix tracks generated by the engine
+    for rank_idx, record in enumerate(scoreboard_data, start=1):
+        sequence_str = " -> ".join(f"{pct}%" for pct in record["rotation_sequence"])
+        years_str = f"{record['years_to_convert']} Years"
+        tax_str = f"${record['lifetime_taxes_paid']:,.2f}"
+        estate_str = f"${record['net_total_estate']:,.2f}"
+        
+        print(f"{rank_idx:<5} | {sequence_str:<52} | {years_str:<15} | {tax_str:<14} | {estate_str:<18}")
+    print("="*125)
+    
+    # Isolate the winning sequence from the Rank 1 item container safely
+    winning_rotation = scoreboard_data[0]["rotation_sequence"]
+    print(f"\n[OPTIMAL COMBINATION FOUND]: Highest wealth track utilizes the sequence: {winning_rotation}\n")
+
+if __name__ == "__main__":
+    raw_pool, cached_sched = generate_all_balance_driven_combinations()
+    completed_scoreboard = score_unrestricted_matrix(raw_pool, cached_sched)
+    print_complete_unrestricted_scoreboard(completed_scoreboard)
+
