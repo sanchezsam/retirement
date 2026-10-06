@@ -8,6 +8,30 @@ import os
 import sys
 import itertools
 
+def calc_marginal_tax(taxable_income, deduction, brackets):
+    """Core mathematical engine for standard marginal tax brackets."""
+    net_taxable = max(0.00, taxable_income - deduction)
+    if net_taxable <= 0: 
+        return 0.00
+    prev_ceiling = 0.00
+    for ceiling, rate, base_tax in brackets:
+        if net_taxable <= ceiling:
+            return base_tax + (net_taxable - prev_ceiling) * rate
+        prev_ceiling = ceiling
+    return 0.00
+
+def calculate_progressive_taxes(income):
+    """Pulls bracket structures from config and evaluates combined marginal liabilities."""
+    import config
+    fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
+    fed_deduction = getattr(config, "IRS_MFJ_STANDARD_DEDUCTION", 30000.00)
+    fed_tax = calc_marginal_tax(income, fed_deduction, fed_brackets)
+
+    nm_brackets = getattr(config, "NM_MFJ_TAX_BRACKETS", [])
+    nm_deduction = getattr(config, "NM_MFJ_STANDARD_DEDUCTION", 32200.00)
+    nm_tax = calc_marginal_tax(income, nm_deduction, nm_brackets)
+    return fed_tax, nm_tax
+
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 try:
@@ -35,6 +59,7 @@ def run_financial_simulation(bracket_schedule):
     
     # 1. Resolve starting asset balances dynamically from your config file
     starting_balances = getattr(config, "STARTING_BALANCES", {})
+    roth_basis = starting_balances.get("roth_pool", 130967.93)  # <-- MOVE IT HERE!
     traditional_401k = starting_balances.get("trad_401k", 1476432.85)
     roth_pool = starting_balances.get("roth_pool", 130967.93)
     brokerage_pool = getattr(config, "TOTAL_INITIAL_BROKERAGE", 457056.29)
@@ -50,6 +75,7 @@ def run_financial_simulation(bracket_schedule):
     aging_modifiers = getattr(config, "LIFESTYLE_AGING_MODIFIERS", {})
     
     default_fallback = getattr(config, "DEFAULT_FALLBACK_BRACKET", 22)
+
     
     for year_idx in range(30):
         current_year = START_YEAR + year_idx
@@ -75,29 +101,46 @@ def run_financial_simulation(bracket_schedule):
         else:
             remaining_runway_years = max(1, active_schedule_length - year_idx)
  
-        if active_bracket == 24:
-            conversion_target = max(180000.00, traditional_401k / remaining_runway_years)
-        elif active_bracket == 22:
-            conversion_target = max(135000.00, traditional_401k / remaining_runway_years)
-        else:
-            conversion_target = 0.00
             
+
+        # Determine conversion pacing and cap bounds based on chosen bracket strategy
+        conversion_target = 0.00
         if active_bracket > 0:
-            # 💡 FIXED: Remove the cap entirely in your final touchdown year to force 8-year clearance
+            fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
+            std_deduction = getattr(config, "IRS_MFJ_STANDARD_DEDUCTION", 30000.00)
+            bracket_ceiling = float('inf')
+            
+            # Use a robust floating-point error margin comparison
+            target_rate = active_bracket / 100.0
+            for ceiling, rate, _ in fed_brackets:
+                if abs(rate - target_rate) < 0.01:
+                    bracket_ceiling = ceiling
+                    break
+            
+            # Cap maximum conversions to fill, but never cross, the active bracket boundary
+            max_allowable_conversion = max(0.00, bracket_ceiling + std_deduction)
+            #paced_target = traditional_401k / remaining_runway_years
+            paced_target = max_allowable_conversion
+            conversion_target = min(paced_target, max_allowable_conversion)
+            
+            # Remove the cap entirely in your final touchdown year to force 8-year clearance
             if remaining_runway_years <= 1:
                 conversion_target = traditional_401k
-            else:
-                MAX_24_BRACKET_CONVERSION_CAP = 230000.00 
-                conversion_target = min(conversion_target, MAX_24_BRACKET_CONVERSION_CAP)
+
             
         # Execute the traditional-to-Roth conversion step safely
         actual_conversion = min(traditional_401k, conversion_target)
         traditional_401k -= actual_conversion
         roth_pool += actual_conversion
         
-        # Process tax liabilities based on active schedule choice
-        fed_tax = (actual_conversion * (active_bracket / 100.0)) if actual_conversion > 0 else 2500.00
-        nm_tax = (actual_conversion * shield_matrix.get("nm_tax_rate", 0.049)) if actual_conversion > 0 else 500.00
+        # Calculate true combined taxable income (Conversions + ordinary structural 401k draws)
+        y_from_401k = sum(m.get("from_401k", 0.00) for m in timeline_data[-1].get("monthly_ledger", [])) if len(timeline_data) > 0 else 0.00
+        y_total_taxable_income = actual_conversion + y_from_401k
+
+        if y_total_taxable_income > 0:
+            fed_tax, nm_tax = calculate_progressive_taxes(y_total_taxable_income)
+        else:
+            fed_tax, nm_tax = 2500.00, 500.00
         total_taxes = fed_tax + nm_tax
         
         # 3. Dynamic Multi-Phase Outflow Calculations with Inflation Adjustments
@@ -166,11 +209,15 @@ def run_financial_simulation(bracket_schedule):
         penalty = 0.00
         
         if wife_age < 59.5 and from_roth > 0:
-            grandfathered_principal_buffer = 130967.93
-            if start_roth > grandfathered_principal_buffer:
-                taxable_subject_amount = min(from_roth, start_roth - grandfathered_principal_buffer)
+            # Track your remaining contribution basis dynamically to allow penalty-free principal draws
+            if roth_basis > 0:
+                roth_basis_drawn = min(from_roth, roth_basis)
+                roth_basis -= roth_basis_drawn
+                from_roth -= roth_basis_drawn
+            
+            if from_roth > 0:
                 is_broken = True
-                penalty = taxable_subject_amount * 0.10
+                penalty = from_roth * 0.10
                 roth_pool -= penalty
             
         # Chronological multi-row calendar generators

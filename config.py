@@ -21,7 +21,7 @@ PHASE_1_DURATION_YEARS = 7  # Specify exactly how long Phase 1 (Low Income/Holid
 STARTING_BALANCES = {
     "brokerage_1": 91313.29,
     "brokerage_2": 15673.00,
-    "house_sale_proceeds": 350000.00,  # Re-injects your $350k sales proceed shield
+    "house_sale_proceeds": 300000.00,  # Re-injects your $350k sales proceed shield
     "house_equity_invested": 0.00,
     "trad_401k": 1476432.85,
     "roth_pool": 130967.93             # CRITICAL: Restore your grandfathered baseline pool
@@ -87,3 +87,27 @@ SCENARIOS = {
 # --- 8. CHRONOLOGICAL TAX BRACKET TARGET MAP ---
 DYNAMIC_BRACKET_SCHEDULE = [22, 24, 22, 24, 22] # Satisfies your Years 1,4 at 24%, others at 22%
 DEFAULT_FALLBACK_BRACKET = 22
+
+# --- 9. PROGRESSIVE MARRIED FILING JOINTLY (MFJ) IRS TAX BRACKET STRUCTURE ---
+IRS_MFJ_STANDARD_DEDUCTION = 30000.00
+IRS_MFJ_TAX_BRACKETS = [
+    (23200.00, 0.10, 0.00),
+    (94300.00, 0.12, 2320.00),
+    (201050.00, 0.22, 10852.00),
+    (383900.00, 0.24, 34337.00),
+    (487450.00, 0.32, 78221.00),
+    (731200.00, 0.35, 111357.00),
+    (float('inf'), 0.37, 196669.50)
+]
+
+# --- 10. NEW MEXICO PROGRESSIVE STATE TAX STRUCTURE (MFJ 2026+) ---
+NM_MFJ_STANDARD_DEDUCTION = 32200.00
+NM_MFJ_TAX_BRACKETS = [
+    (8000.00, 0.015, 0.00),
+    (25000.00, 0.032, 120.00),
+    (50000.00, 0.043, 664.00),
+    (100000.00, 0.047, 1739.00),
+    (31500.00, 0.049, 4089.00),
+    (float('inf'), 0.059, 14624.00)
+]
+
