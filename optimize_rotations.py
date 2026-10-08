@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-RETIREMENT RUNWAY BALANCES OPTIMIZER - INTEGRATED PRODUCTION ENGINE (BLOCK 1 OF 6)
+RETIREMENT RUNWAY BALANCES OPTIMIZER - INTEGRATED PRODUCTION ENGINE
 Compiles pathways, global module imports, and progressive tax calculations.
 Safeguards: Hard Bracket Ceilings, Pre-Tax Draw Lockouts, and IRS 5-Year Clock Violations.
 """
 import os
 import sys
 import itertools
+import importlib.util
 
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 try:
     import config
@@ -40,17 +41,10 @@ def calculate_progressive_taxes(income):
     nm_tax = calc_marginal_tax(income, nm_deduction, nm_brackets)
     return fed_tax, nm_tax
 
-
-
 def run_financial_simulation(bracket_schedule):
     """
     30-Year Financial Simulation Matrix. Fully resolves cash distributions, 
     tax-drag ordering, and annual investment/cash market compounding.
-    
-    TRUE 2026 FIXED HORIZON ENGINE - PART 1:
-    1. Bypasses internal cash offsets and forces max bracket filling to $244,600.00 gross.
-    2. Subtracts from_roth lifestyle drawdowns natively from the roth_pool balance.
-    3. Tracks unseasoned conversions chronologically via a rolling 5-year calendar map.
     """
     timeline_data = []
     
@@ -72,7 +66,7 @@ def run_financial_simulation(bracket_schedule):
     spending_matrix = getattr(config, "SPENDING", {})
     aging_modifiers = getattr(config, "LIFESTYLE_AGING_MODIFIERS", {})
     
-    start_year = 2026
+    start_year = 2027
     wife_start_age = getattr(config, "WIFE_START_AGE", 47)
     default_fallback = getattr(config, "DEFAULT_FALLBACK_BRACKET", 22)
 
@@ -100,7 +94,7 @@ def run_financial_simulation(bracket_schedule):
         start_roth = roth_pool
         
         remaining_runway_years = max(1, 61 - wife_age)
-
+        
         # Dynamic Outflow & Inflow Vector Generation
         inflation_multiplier = (1.0 + inflation_rate) ** year_idx
         
@@ -168,25 +162,27 @@ def run_financial_simulation(bracket_schedule):
             from_401k = min(traditional_401k, net_deficit)
             traditional_401k -= from_401k
             net_deficit -= from_401k
-        # TRUE 2026 BRACKET ALIGNMENT - PART 2:
-        # Determine Conversion Target (Forced explicitly to match your clean 2026 boundaries)
+
+        # TRUE 2026 BRACKET ALIGNMENT: Establish conversion targets
         conversion_target = 0.00
         if active_bracket > 0:
-            # UNLOCKED STATUTORY BOUNDARIES: Sets explicit dollar ceilings to ignore cash offsets entirely
             if active_bracket == 22:
-                conversion_target = 244600.00  # True Gross Space ($211,400 Ceiling + $33,200 Deduction)
+                conversion_target = 244600.00
             elif active_bracket == 24:
-                conversion_target = 436750.00  # True Gross Space ($403,550 Ceiling + $33,200 Deduction)
+                conversion_target = 436750.00
             else:
                 conversion_target = 545650.00
             
+            # Prevent bracket overfill leakage by subtracting lifestyle distributions already utilizing the space
+            conversion_target = max(0.00, conversion_target - from_401k)
+
             if remaining_runway_years <= 1:
                 conversion_target = traditional_401k
 
         actual_conversion = min(traditional_401k, conversion_target)
         traditional_401k -= actual_conversion
         roth_pool += actual_conversion
-        
+
         if actual_conversion > 0:
             active_conversion_ladder[current_year] = active_conversion_ladder.get(current_year, 0.00) + actual_conversion
 
@@ -229,7 +225,7 @@ def run_financial_simulation(bracket_schedule):
                 monthly_ledger.append({
                     "month": m_name, "from_inflow": monthly_inflow_split, "from_brokerage": monthly_brokerage_split,
                     "from_roth": monthly_roth_split, "from_401k": monthly_401k_split,
-                    "is_irs_violation": is_broken if m_name == active_start_month and penalty > 0 else False,
+                    "is_irs_violation": m_name == active_start_month and penalty > 0,
                     "penalty_paid": penalty if m_name == active_start_month and penalty > 0 else 0.00
                 })
 
@@ -239,10 +235,12 @@ def run_financial_simulation(bracket_schedule):
         roth_pool *= (1.0 + growth_rate)
         
         penalty_free_basis *= (1.0 + growth_rate)
-        for c_yr in active_conversion_ladder:
+        for c_yr in list(active_conversion_ladder.keys()):
             active_conversion_ladder[c_yr] *= (1.0 + growth_rate)
         
-        # Save actual_conversion directly to the row to prevent display variable distortion
+        # Calculate overall Required Income parameter natively
+        y_req_income = living_exp + total_taxes + health_cost
+
         year_row = {
             "year": current_year, "wife_age": wife_age,
             "husband_age": getattr(config, "HUSBAND_START_AGE", 46) + year_idx,
@@ -251,8 +249,8 @@ def run_financial_simulation(bracket_schedule):
             "end_brokerage": brokerage_pool, "end_trad": traditional_401k, "end_roth": roth_pool, 
             "fed_tax": fed_tax, "nm_tax": nm_tax, "total_taxes": total_taxes, "living_expense": living_exp,
             "healthcare_cost": health_cost, "pension_ss_rent": baseline_inflows, "monthly_ledger": monthly_ledger,
-            "actual_conversion": actual_conversion,
-            "true_taxable_income": y_total_taxable_income
+            "actual_conversion": actual_conversion, "conversion_target": conversion_target,
+            "true_taxable_income": y_total_taxable_income, "required_income": y_req_income
         }
         timeline_data.append(year_row)
         
@@ -262,15 +260,13 @@ def run_financial_simulation(bracket_schedule):
             
     return timeline_data
 
-
-
 def generate_all_balance_driven_combinations():
-    """Generates all conversion paths restricted strictly to years before Wife turns 61. (BLOCK 4 OF 6)"""
-    bracket_options = getattr(config, "AVAILABLE_BRACKET_CHOICES",)
+    """Generates all conversion paths restricted strictly to years before Wife turns 61."""
+    bracket_options = getattr(config, "AVAILABLE_BRACKET_CHOICES", [0, 22, 24])
     unique_executed_keys = set()
     absolute_results_pool = []
     
-    target_runway_horizon = max(1, 61 - getattr(config, "WIFE_START_AGE", 47)) # 14 Years Max
+    target_runway_horizon = max(1, 61 - getattr(config, "WIFE_START_AGE", 47))
     print(f"[INFO] Dynamically walking combination tree paths for a fixed {target_runway_horizon}-Year Runway...")
     
     raw_permutations = list(itertools.combinations_with_replacement(bracket_options, target_runway_horizon))
@@ -310,7 +306,6 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
 
     seen_execution_patterns = set()
 
-    # Find the max estate of completely VALID active strategies to establish baseline ceiling
     max_estate_found = 0.0
     for item in absolute_results_pool:
         sim_data = item["simulation_data"]
@@ -341,14 +336,11 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
         simulation_data = item["simulation_data"]
         actual_clear_year = item["years_to_convert"]
         
-        # 1. HARD RULE LOCKOUT ENGINE
         is_illegal_strategy = False
         for year_row in simulation_data:
             for m_data in year_row.get("monthly_ledger", []):
-                # Lockout Rule A: No ordinary lifestyle drawdowns from pre-tax 401k
                 if m_data.get("from_401k", 0.00) > 0.01:
                     is_illegal_strategy = True
-                # Lockout Rule B: No early unseasoned Roth distribution IRS tax penalties
                 if m_data.get("is_irs_violation", False) or m_data.get("penalty_paid", 0.00) > 0.01:
                     is_illegal_strategy = True
             if is_illegal_strategy:
@@ -357,7 +349,6 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
         if is_illegal_strategy:
             continue
             
-        # 2. SCOREBOARD TABLE DEDUPLICATION
         executed_brackets = []
         for y_idx, y_row in enumerate(simulation_data):
             if y_idx < len(clean_sequence):
@@ -417,7 +408,6 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
     optimization_scoreboard.sort(key=lambda x: (x["suitability_score"], x["net_total_estate"]), reverse=True)
     return optimization_scoreboard
 
-
 def format_carryover_sequence(sequence_list, field_width=78):
     """Formats array sequences into wrapped terminal string chunks cleanly."""
     raw_segments = [f"{pct}%" for pct in sequence_list]
@@ -436,14 +426,14 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
     print("="*150)
     print(f"{'Strategic Performance Metric Pillar Profile':<50} | {'22% Strategy':<15} | {'24% Strategy':<15} | {'Custom Hybrid Strategy':<15}")
     print("-"*150)
-    print(f"FINAL RETIREMENT SUITABILITY SCORE                 | {'95.0 / 100':<15} | {'92.8 / 100':<15} | {'89.6 / 100':<15}")
+    print(f"FINAL RETIREMENT SUITABILITY INDEX                 | {'95.0 / 100':<15} | {'92.8 / 100':<15} | {'89.6 / 100':<15}")
     print("="*150)
 
-    print("\n" + "="*195)
+    print("\n" + "="*210)
     print("             RANKED RETIREMENT MATRIX SCOREBOARD: COMPREHENSIVE STRATEGY VARIATIONS")
-    print("="*195)
+    print("="*210)
     print(f"{'Rank':<5} | {'Bracket Rotation Sequence Pattern':<78} | {'Clear':<7} | {'Est Taxes':<14} | {'End Estate':<15} | {'Liq Buffer':<11} | {'IRS Clock':<10} | {'Roth Split':<11} | {'Legis Risk':<12} | {'FINAL SCORE':<12}")
-    print("-"*195)
+    print("-"*210)
     
     for rank_idx, record in enumerate(scoreboard_data[:30], start=1):
         sequence_str = format_carryover_sequence(record["rotation_sequence"], field_width=78)
@@ -461,7 +451,7 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
         for extra_line in base_lines[1:]:
             print(f"{'':<5} | {extra_line:<78} | {'':<7} | {'':<14} | {'':<15} | {'':<11} | {'':<10} | {'':<11} | {'':<12} | {'':<12}")
             
-    print("="*195)
+    print("="*210)
     
     while True:
         if len(scoreboard_data) == 0:
@@ -480,13 +470,13 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
             
             pattern_display_str = " -> ".join(f"{br}%" for br in rotation_list)
             
-            print("\n" + "="*252)
+            print("\n" + "="*284)
             print(f" YEAR-BY-YEAR DETAIL DRAWDOWN LEDGER FOR RANK {target_rank} Pattern: {pattern_display_str} (Full 30-Year Projections)")
-            print("="*252)
-            print(f"{'Year':<7} | {'Bracket':<7} | {'Brok Start':<14} | {'401k Start':<14} | {'Converted':<14} | {'Roth Start':<14} | {'Est Taxes':<12} | {'Health Cost':<12} | {'Inflow Base':<13} | {'Taxable Inc':<13} | {'From Broker':<13} | {'From Roth':<13} | {'From 401k':<13} | {'End Roth':<14}")
-            print("-"*252)
+            print("="*284)
+            print(f"{'Year':<7} | {'Bracket':<7} | {'Brok Start':<14} | {'401k Start':<14} | {'Converted':<14} | {'Roth Start':<14} | {'Living Exp':<13} | {'Est Taxes':<12} | {'Health Cost':<12} | {'Inflow Base':<13} | {'Req Income':<13} | {'From Broker':<13} | {'From Roth':<13} | {'From 401k':<13} | {'End Roth':<14}")
+            print("-"*284)
             
-            grand_total_taxes = grand_total_health = grand_total_base_inflow = grand_total_taxable_income = grand_total_brokerage = grand_total_roth = grand_total_401k = grand_total_conversions = 0.0
+            grand_total_taxes = grand_total_health = grand_total_base_inflow = grand_total_taxable_income = grand_total_brokerage = grand_total_roth = grand_total_401k = grand_total_conversions = grand_total_living = grand_total_req_income = 0.0
             
             for y_idx, y_row in enumerate(full_timeline_data):
                 combined_taxes = y_row.get("total_taxes", 0.00)
@@ -502,13 +492,15 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
                 y_from_roth = sum(m.get("from_roth", 0.00) for m in y_row.get("monthly_ledger", []))
                 y_from_401k = sum(m.get("from_401k", 0.00) for m in y_row.get("monthly_ledger", []))
                 
-                # FIXED DIRECT LOOKUPS: Extracts the accurate pre-calculated engine vectors natively
-                actual_annual_conversion = y_row.get("actual_conversion", max(0.00, y_row.get("start_trad", 0.00) - y_row.get("end_trad", 0.00) + y_from_401k))
-                y_total_taxable_income = y_row.get("true_taxable_income", actual_annual_conversion + y_from_401k)
+                actual_annual_conversion = y_row.get("actual_conversion", 0.00)
+                y_total_taxable_income = y_row.get("true_taxable_income", 0.00)
+                y_living = y_row.get("living_expense", 0.00)
+                y_req_income = y_row.get("required_income", 0.00)
                 
                 grand_total_taxes += combined_taxes; grand_total_health += y_row.get("healthcare_cost", 0.00); grand_total_base_inflow += y_row.get("pension_ss_rent", 0.00)
                 grand_total_brokerage += y_from_brokerage; grand_total_roth += y_from_roth; grand_total_401k += y_from_401k
                 grand_total_conversions += actual_annual_conversion; grand_total_taxable_income += y_total_taxable_income
+                grand_total_living += y_living; grand_total_req_income += y_req_income
                 
                 sb = f"${y_row.get('start_brokerage', 0.00):,.2f}"
                 st = f"${y_row.get('start_trad', 0.00):,.2f}"
@@ -517,29 +509,39 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
                 ct = f"${combined_taxes:,.2f}"
                 hc = f"${y_row.get('healthcare_cost', 0.00):,.2f}"
                 inf = f"${y_row.get('pension_ss_rent', 0.00):,.2f}"
-                ti = f"${y_total_taxable_income:,.2f}" 
                 fb = f"${y_from_brokerage:,.2f}"
                 fr = f"${y_from_roth:,.2f}"
                 f4 = f"${y_from_401k:,.2f}"
                 er = f"${y_row.get('end_roth', 0.00):,.2f}"
+                yl = f"${y_living:,.2f}"
+                yr = f"${y_req_income:,.2f}"
                 
-                print(f"Year {y_row.get('year', 2026)} | {active_b_pct:<7} | {sb:<14} | {st:<14} | {sc:<14} | {sr:<14} | {ct:<12} | {hc:<12} | {inf:<13} | {ti:<13} | {fb:<13} | {fr:<13} | {f4:<13} | {er:<14}")
+                print(f"Year {y_row.get('year', 2026)} | {active_b_pct:<7} | {sb:<14} | {st:<14} | {sc:<14} | {sr:<14} | {yl:<13} | {ct:<12} | {hc:<12} | {inf:<13} | {yr:<13} | {fb:<13} | {fr:<13} | {f4:<13} | {er:<14}")
                       
-            print("-"*252)
-            print(f"{'TOTALS':<7} | {'-':<7} | {'-':<14} | {'-':<14} | ${grand_total_conversions:<12,.2f} | {'-':<14} | ${grand_total_taxes:<11,.2f} | ${grand_total_health:<11,.2f} | ${grand_total_base_inflow:<12,.2f} | ${grand_total_taxable_income:<12,.2f} | ${grand_total_brokerage:<12,.2f} | ${grand_total_roth:<12,.2f} | ${grand_total_401k:<12,.2f} | {'-':<14}")
-            print("="*252)
+            print("-"*284)
+            print(f"{'TOTALS':<7} | {'-':<7} | {'-':<14} | {'-':<14} | ${grand_total_conversions:<12,.2f} | {'-':<14} | ${grand_total_living:<11,.2f} | ${grand_total_taxes:<11,.2f} | ${grand_total_health:<11,.2f} | ${grand_total_base_inflow:<12,.2f} | ${grand_total_req_income:<12,.2f} | ${grand_total_brokerage:<12,.2f} | ${grand_total_roth:<12,.2f} | ${grand_total_401k:<12,.2f} | {'-':<14}")
+            print("="*284)
             
             export_input = input(f"\nWould you like to generate full custom Excel/PDF files for Rank {target_rank}? (y/n): ").strip().lower()
             if export_input == 'y':
                 try:
-                    import report_generator
-                    report_generator.generate_custom_dossiers(target_rank, selected_record, full_timeline_data, rotation_list, grand_total_taxes, grand_total_health, grand_total_base_inflow, grand_total_taxable_income, grand_total_brokerage, grand_total_roth, grand_total_401k)
-                except ImportError:
-                    print("[ERROR] 'report_generator.py' module missing from local project folder directory.")
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    report_gen_path = os.path.join(script_dir, "report_generator.py")
+                    
+                    spec = importlib.util.spec_from_file_location("report_generator", report_gen_path)
+                    report_generator = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(report_generator)
+                    
+                    report_generator.generate_custom_dossiers(
+                        target_rank, selected_record, full_timeline_data, rotation_list, 
+                        grand_total_taxes, grand_total_health, grand_total_base_inflow, 
+                        grand_total_req_income, grand_total_brokerage, grand_total_roth, grand_total_401k
+                    )
+                except Exception as err:
+                    print(f"[ERROR] Could not load or run report_generator.py: {err}")
             
         except (ValueError, KeyError, IndexError) as err:
             print(f"[ERROR] Selection visualization error: {err}")
-
 
 if __name__ == "__main__":
     raw_pool, cached_sched = generate_all_balance_driven_combinations()
