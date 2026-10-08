@@ -270,11 +270,10 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
         active_month_index = months_list.index(active_start_month)
         total_active_months_in_year = 12.0 - active_month_index
         
-        monthly_inflow_split = from_inflow / total_active_months_in_year
-        monthly_brokerage_split = (from_brokerage + tax_from_brokerage) / total_active_months_in_year
-        monthly_roth_split = (from_roth + tax_from_roth) / total_active_months_in_year
-        monthly_401k_split = from_401k / total_active_months_in_year
-        
+        # Identify how many valid voucher payment windows fall within this year's active track
+        active_vouchers = [m for m in months_list[active_month_index:] if m in ["Jan", "Apr", "Jun", "Sep"]]
+        total_vouchers_this_year = len(active_vouchers) if active_vouchers else 4
+
         monthly_ledger = []
         for m_idx, m_name in enumerate(months_list):
             if m_idx < active_month_index:
@@ -283,9 +282,18 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
                     "is_irs_violation": False, "penalty_paid": 0.00
                 })
             else:
+                m_inflow = from_inflow / total_active_months_in_year
+                m_brokerage = from_brokerage / total_active_months_in_year
+                m_roth = from_roth / total_active_months_in_year
+                m_401k = from_401k / total_active_months_in_year
+                
+                if m_name in active_vouchers:
+                    m_brokerage += tax_from_brokerage / total_vouchers_this_year
+                    m_roth += tax_from_roth / total_vouchers_this_year
+
                 monthly_ledger.append({
-                    "month": m_name, "from_inflow": monthly_inflow_split, "from_brokerage": monthly_brokerage_split,
-                    "from_roth": monthly_roth_split, "from_401k": monthly_401k_split,
+                    "month": m_name, "from_inflow": m_inflow, "from_brokerage": m_brokerage,
+                    "from_roth": m_roth, "from_401k": m_401k,
                     "is_irs_violation": is_broken if m_name == active_start_month and penalty > 0 else False,
                     "penalty_paid": penalty if m_name == active_start_month and penalty > 0 else 0.00
                 })

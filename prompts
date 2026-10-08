@@ -1,0 +1,8 @@
+"I have a central config.py file for a retirement simulator. Please write a snippet containing a Python list of tuples for the 2026 Married Filing Jointly (MFJ) federal progressive tax brackets, along with a $30,000 standard deduction, and another separate list of tuples for the New Mexico progressive state tax brackets for MFJ with a $32,200 standard deduction. Keep it strictly to the configuration data arrays."
+
+"Using the configuration arrays from the previous prompt, write a standalone Python function called calculate_progressive_taxes(taxable_income) that imports config. It must calculate the true marginal progressive federal tax and the true marginal progressive New Mexico state tax for a given taxable income. Do not write the rest of the simulation yet, just this tax math function."
+
+
+"Now write a isolated Python code snippet that implements real-world IRS FIFO (First-In, First-Out) ordering rules for early Roth IRA distributions before age 59.5. It needs to track a roth_basis (contributions) and ensure that draws up to that basis are completely penalty-free, and only apply the 10% penalty to draws that exceed the basis. Keep it under 20 lines of clean logic."
+
+"Here are lines 100 to 150 of my script where taxes and penalties are processed. Please replace my old flat-rate tax calculations and the old inverted penalty logic with the new progressive functions we just built. Here is my code: [PASTE YOUR CODE HERE]"

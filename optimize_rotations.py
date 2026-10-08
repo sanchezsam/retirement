@@ -72,7 +72,8 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
     inflation_rate = getattr(config, "INFLATION_RATE", 0.03)
     
     # 0% cash yield rate forces a flat brokerage account with no interest accumulation drag
-    cash_yield = 0.00
+    cash_yield = getattr(config, "CASH_YIELD_RATE", 0.00)
+
     
     phase1_duration = getattr(config, "PHASE_1_DURATION_YEARS", 7)
     spending_matrix = getattr(config, "SPENDING", {})
