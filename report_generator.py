@@ -48,7 +48,7 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
 
     # Tab 1 Creation: Executive Suitability Matrix Dashboard
     ws_dash = wb.active
-    ws_dash.title = f"Executive Dashboard"
+    ws_dash.title = "Executive Dashboard"
     ws_dash.sheet_view.showGridLines = True
     
     ws_dash.merge_cells("A1:D1")
@@ -82,10 +82,10 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
 
     # Syncs your original comparative metrics map rows down inside columns A through C
     comparison_map = [
-        ("Total Multi-Year Allowable Conversion Volume", f"=SUM('Ledger Summary Rank {target_rank}'!R4:R47)", f"=SUM('Ledger Summary Rank {target_rank}'!R4:R47)", f"=SUM('Ledger Summary Rank {target_rank}'!R4:R47)"),
-        ("Cumulative Tax Pool Paid to Convert", f"=SUM('Ledger Summary Rank {target_rank}'!I4:I47)", f"=SUM('Ledger Summary Rank {target_rank}'!I4:I47)", f"=SUM('Ledger Summary Rank {target_rank}'!I4:I47)"),
-        ("Total Lifetime ACA / Medicare Insurance Costs", f"=SUM('Ledger Summary Rank {target_rank}'!H4:H47)", f"=SUM('Ledger Summary Rank {target_rank}'!H4:H47)", f"=SUM('Ledger Summary Rank {target_rank}'!H4:H47)"),
-        ("Overall Total Value inside the Roth at Age 90", f"='Ledger Summary Rank {target_rank}'!T47", f"='Ledger Summary Rank {target_rank}'!T47", f"='Ledger Summary Rank {target_rank}'!T47"),
+        ("Total Multi-Year Allowable Conversion Volume", "=SUM('Ledger Summary Rank ' & " + str(target_rank) + "!T4:T47)", "=SUM('Ledger Summary Rank ' & " + str(target_rank) + "!T4:T47)", "=SUM('Ledger Summary Rank ' & " + str(target_rank) + "!T4:T47)"),
+        ("Cumulative Tax Pool Paid to Convert", "=SUM('Ledger Summary Rank ' & " + str(target_rank) + "!J4:J47)", "=SUM('Ledger Summary Rank ' & " + str(target_rank) + "!J4:J47)", "=SUM('Ledger Summary Rank ' & " + str(target_rank) + "!J4:J47)"),
+        ("Total Lifetime ACA / Medicare Insurance Costs", "=SUM('Ledger Summary Rank ' & " + str(target_rank) + "!I4:I47)", "=SUM('Ledger Summary Rank ' & " + str(target_rank) + "!I4:I47)", "=SUM('Ledger Summary Rank ' & " + str(target_rank) + "!I4:I47)"),
+        ("Overall Total Value inside the Roth at Age 90", "='Ledger Summary Rank ' & " + str(target_rank) + "!W47", "='Ledger Summary Rank ' & " + str(target_rank) + "!W47", "='Ledger Summary Rank ' & " + str(target_rank) + "!W47"),
     ]
     for idx, row_payload in enumerate(comparison_map, start=10):
         label_text = row_payload[0]
@@ -98,21 +98,21 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
                 cell.number_format = '$#,##0.00'
     print("[DEBUG] Tab 1 Executive Scorecard built perfectly.")
     
-    # Tab 2 Setup: 20-Column Chronological Transaction Records Data Matrix
+    # Tab 2 Setup: 23-Column Chronological Transaction Records Data Matrix
     ws_ledg = wb.create_sheet(title=f"Ledger Summary Rank {target_rank}")
     ws_ledg.sheet_view.showGridLines = True
 
-    ws_ledg.merge_cells("A1:T1")
+    ws_ledg.merge_cells("A1:W1")
     ws_ledg["A1"] = "CHRONOLOGICAL CONVERSION TIMELINE TRANSACTIONS MATRIX - COMPLIANCE RECORDS"
     ws_ledg["A1"].font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
     ws_ledg["A1"].fill = navy_fill
     ws_ledg["A1"].alignment = align_center
 
     excel_headers = [
-        "Year", "Wife Age", "Husband Age", "Brokerage Start", "401k Start", "Roth Start",
-        "Yearly Income Needed", "Healthcare Cost", "Estimated Taxes", "Total Outflow",
-        "From Pension/SS/Rent", "From Brokerage", "From Roth", "From 401(k)", "Mandatory RMD",
-        "Total Taxable Income", "Brokerage End", "Max Roth Conversion", "401(k) End", "Roth End"
+        "#", "Yr", "Wife Age", "Husband Age", "Brokerage Start", "401k Start", "Roth Start",
+        "Living Expenses", "Healthcare Cost", "Estimated Taxes", "Total Outflow",
+        "From Pension/SS/Rent", "Brok Yield", "Required Income", "From Brokerage", "From Roth", "From 401(k)", "Mandatory RMD",
+        "Total Taxable Income", "Max Roth Conversion", "Brokerage End", "401(k) End", "Roth End"
     ]
     for c_idx, text in enumerate(excel_headers, start=1):
         cell = ws_ledg.cell(row=3, column=c_idx, value=text)
@@ -122,7 +122,6 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         cell.border = thin_border
 
     # Calculate values across the complete sequence timeline
-    grand_total_living = 0.0
     for offset_idx in range(44):
         r_idx = 4 + offset_idx
         if offset_idx < len(full_timeline_data):
@@ -136,12 +135,12 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
             y_needed = y_row.get("living_expense", 0.0)
             y_health = y_row.get("healthcare_cost", 0.0)
             y_outflow = y_needed + y_health + c_tax
-            grand_total_living += y_needed
 
             row_data = [
-                y_row.get("year", 2026 + offset_idx),
-                y_row.get("wife_age", 60 + offset_idx),
-                y_row.get("husband_age", 62 + offset_idx),
+                offset_idx + 1,
+                str(y_row.get("year", 2027 + offset_idx))[-2:],
+                y_row.get("wife_age", 47 + offset_idx),
+                y_row.get("husband_age", 46 + offset_idx),
                 y_row.get("start_brokerage", 0.0),
                 y_row.get("start_trad", 0.0),
                 y_row.get("start_roth", 0.0),
@@ -150,20 +149,25 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
                 c_tax,
                 y_outflow,
                 y_row.get("pension_ss_rent", 0.0),
+                y_row.get("brokerage_gains", 0.0),
+                y_row.get("required_income", y_outflow),
                 y_from_brokerage,
                 y_from_roth,
                 y_from_401k,
                 y_row.get("rmd_amount", 0.0),
                 y_row.get("true_taxable_income", 0.0),
-                y_row.get("end_brokerage", 0.0),
                 y_row.get("actual_conversion", 0.0),
+                y_row.get("end_brokerage", 0.0),
                 y_row.get("end_trad", 0.0),
                 y_row.get("end_roth", 0.0)
             ]
         else:
             row_data = [
-                2026 + offset_idx, 60 + offset_idx, 62 + offset_idx,
-                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+                offset_idx + 1,
+                str(2027 + offset_idx)[-2:],
+                config.WIFE_START_AGE + offset_idx,
+                config.HUSBAND_START_AGE + offset_idx,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
             ]
 
         for c_idx, val in enumerate(row_data, start=1):
@@ -174,31 +178,31 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
             if r_idx % 2 == 0:
                 cell.fill = PatternFill(start_color="F2F4F4", end_color="F2F4F4", fill_type="solid")
                 
-            if c_idx > 3:
+            if c_idx > 4:
                 cell.number_format = '$#,##0.00'
                 cell.alignment = align_right
             else:
                 cell.alignment = align_center
 
-    ws_ledg["P50"] = "Total Combined Conversion Volume:"
-    ws_ledg["R50"] = "=SUM(R4:R47)"
-    ws_ledg["P51"] = "Total Conversion Taxes Paid:"
-    ws_ledg["R51"] = "=SUM(I4:I47)"
-    ws_ledg["P52"] = "Total Lifetime Healthcare Cost:"
-    ws_ledg["R52"] = "=SUM(H4:H47)"
-    ws_ledg["P53"] = "Total Un-matured Roth Principal Tapped:"
-    ws_ledg["R53"] = "=SUM(M4:M47)"
-    ws_ledg["P54"] = "Cumulative 10% IRS Penalty Fees Paid:"
-    ws_ledg["R54"] = selected_record.get("annual_penalties_paid", 0.00)
-    ws_ledg["P55"] = "Terminal Roth Value at Age 90:"
-    ws_ledg["R55"] = "=T47"
+    ws_ledg["R50"] = "Total Combined Conversion Volume:"
+    ws_ledg["T50"] = "=SUM(T4:T47)"
+    ws_ledg["R51"] = "Total Conversion Taxes Paid:"
+    ws_ledg["T51"] = "=SUM(J4:J47)"
+    ws_ledg["R52"] = "Total Lifetime Healthcare Cost:"
+    ws_ledg["T52"] = "=SUM(I4:I47)"
+    ws_ledg["R53"] = "Total Un-matured Roth Principal Tapped:"
+    ws_ledg["T53"] = "=SUM(P4:P47)"
+    ws_ledg["R54"] = "Cumulative 10% IRS Penalty Fees Paid:"
+    ws_ledg["T54"] = selected_record.get("annual_penalties_paid", 0.00)
+    ws_ledg["R55"] = "Terminal Roth Value at Age 90:"
+    ws_ledg["T55"] = "=W47"
 
     for r_idx in range(50, 56):
-        ws_ledg.cell(row=r_idx, column=16).font = Font(name="Segoe UI", size=10, bold=True)
-        cell = ws_ledg.cell(row=r_idx, column=18)
+        ws_ledg.cell(row=r_idx, column=18).font = Font(name="Segoe UI", size=10, bold=True)
+        cell = ws_ledg.cell(row=r_idx, column=20)
         cell.font = font_data_bold; cell.number_format = '$#,##0.00'; cell.alignment = align_right
         if r_idx == 53 or r_idx == 54:
-            ws_ledg.cell(row=r_idx, column=16).font = Font(name="Segoe UI", size=10, bold=True, color="9C0006")
+            ws_ledg.cell(row=r_idx, column=18).font = Font(name="Segoe UI", size=10, bold=True, color="9C0006")
             cell.font = Font(name="Segoe UI", size=10, bold=True, color="9C0006")
 
     for ws_target in wb.worksheets:
@@ -258,42 +262,34 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
         ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#D9D9D9')), 
         ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#1F497D')),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F8F9F9')]),
-        ('TOPPADDING', (0,0), (-1,-1), 2.5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 2.5),
-        ('LEFTPADDING', (0,0), (-1,-1), 4),
-        ('RIGHTPADDING', (0,0), (-1,-1), 4)
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F8F9F9')])
     ]))
     story.append(t_param)
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 10))
 
-    story.append(Paragraph("FIRST PAGE COMPLIANCE SUMMARY & STRATEGIC PILLAR SCORES", section_style))
-    
+    story.append(Paragraph("STRATEGIC PILLAR COMPLIANCE SCORES PERFORMANCE INDEX", section_style))
     score_table_data = [
-        [Paragraph("Strategic Performance Metric Profile", table_hdr), Paragraph("Calculated Vector Value", table_hdr), Paragraph("Compliance Boundary Weight", table_hdr)],
-        [Paragraph("Liquidity Valley Defense Score", cell_bold), Paragraph(f"{selected_record['liq_buffer']:.1f} / 25.0", cell_reg), Paragraph("Cash cushion survival metrics inside the valley runway.", cell_reg)],
-        [Paragraph("IRS 5-Year Clock Safety Score", cell_bold), Paragraph(f"{selected_record['clock_safety']:.1f} / 25.0", cell_reg), Paragraph("Protection margin against active early distribution penalties.", cell_reg)],
+        [Paragraph("Strategic Performance Metric Pillar Profile", table_hdr), Paragraph("Calculated Vector Value", table_hdr), Paragraph("Compliance Boundary Weights & Strategic Target Profiles", table_hdr)],
+        [Paragraph("Liquidity Valley Defense Score", cell_bold), Paragraph(f"{selected_record['liq_buffer']:.1f} / 25.0", cell_reg), Paragraph("Cash runway cushion buffer survival metrics inside the Phase 1 tactical window.", cell_reg)],
+        [Paragraph("IRS 5-Year Clock Safety Score", cell_bold), Paragraph(f"{selected_record['clock_safety']:.1f} / 25.0", cell_reg), Paragraph("Protection margin against early unseasoned conversion ladder distribution penalties.", cell_reg)],
         [Paragraph("Generational Roth Ratio Score", cell_bold), Paragraph(f"{selected_record['roth_split']:.1f} / 25.0", cell_reg), Paragraph("Final distribution percentage stacked inside tax-free Roth vault.", cell_reg)],
         [Paragraph("Legislative Risk Defense Score", cell_bold), Paragraph(f"{selected_record['legis_risk']:.1f} / 25.0", cell_reg), Paragraph("Clearing speed timeline to firewall portfolio from rules changes.", cell_reg)],
-        [Paragraph("FINAL SUITABILITY PERFORMANCE INDEX", cell_bold), Paragraph(f"<b>{selected_record['suitability_score']:.1f} / 100.0</b>", cell_reg), Paragraph("Combined suitability total across all four strategic pillars.", cell_reg)]
+        [Paragraph("FINAL SUITABILITY PERFORMANCE INDEX", cell_bold), Paragraph(f"<b>{selected_record['suitability_score']:.1f} / 100.0</b>", cell_reg), Paragraph("Combined suitability performance score across all four strategic pillars.", cell_reg)]
     ]
-    
     t_score = Table(score_table_data, colWidths=[200, 100, 452])
     t_score.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#34495E')), 
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
         ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#D9D9D9')), 
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#34495E')),
-        ('TOPPADDING', (0,0), (-1,-1), 3),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 3)
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#34495E'))
     ]))
     story.append(t_score)
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 10))
 
-    # --- PREPARE 30-YEAR MACRO TRAJECTORY OVERVIEW CHART VARIABLE OBJECT ---
-    d_macro_chart = Drawing(752, 145)
+    # --- CHART GENERATION FOR MACRO WEALTH TRAJECTORY ---
+    d_macro_chart = Drawing(752, 160)
     macro_vbc = VerticalBarChart()
-    macro_vbc.x, macro_vbc.y, macro_vbc.height, macro_vbc.width = 45, 15, 100, 660
+    macro_vbc.x, macro_vbc.y, macro_vbc.height, macro_vbc.width = 45, 15, 110, 660
     
     macro_years = [str(r.get("year", "")) for r in full_timeline_data]
     macro_trad = [r.get("end_trad", 0.0) for r in full_timeline_data]
@@ -342,10 +338,10 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
     story.append(Paragraph("SUMMARY ACTIVE RETIREMENT CONVERSION LEDGER WINDOW", section_style))
     
     ledger_pdf_rows = [[
-        Paragraph("Year", table_hdr), Paragraph("Bracket", table_hdr), Paragraph("Brok Start", table_hdr), Paragraph("401k Start", table_hdr),
+        Paragraph("#", table_hdr), Paragraph("Yr", table_hdr), Paragraph("Bracket", table_hdr), Paragraph("Brok Start", table_hdr), Paragraph("401k Start", table_hdr),
         Paragraph("Roth Start", table_hdr), Paragraph("Living Exp", table_hdr), Paragraph("Est Taxes", table_hdr), Paragraph("Health Cost", table_hdr), 
-        Paragraph("Inflow Base", table_hdr), Paragraph("Req Income", table_hdr), Paragraph("From Inflow", table_hdr), Paragraph("From Brok", table_hdr), 
-        Paragraph("From Roth", table_hdr), Paragraph("End Roth", table_hdr)
+        Paragraph("Inflow Base", table_hdr), Paragraph("Brok Yield", table_hdr), Paragraph("Req Income", table_hdr), Paragraph("From Inflow", table_hdr), 
+        Paragraph("From Brok", table_hdr), Paragraph("From Roth", table_hdr), Paragraph("End Roth", table_hdr)
     ]]
     
     truncated_total_taxes = 0.00
@@ -356,6 +352,7 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
     truncated_total_roth = 0.00
     truncated_total_living = 0.00
     truncated_total_req_income = 0.00
+    t_brok_gains = 0.00
     
     active_years_data = []
     for y_idx, y_row in enumerate(full_timeline_data):
@@ -367,6 +364,7 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         
         y_living = y_row.get("living_expense", 0.00)
         y_req_income = y_row.get("required_income", 0.00)
+        y_brok_gains = y_row.get("brokerage_gains", 0.00)
         
         truncated_total_taxes += c_tax
         truncated_total_health += y_row["healthcare_cost"]
@@ -376,12 +374,14 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         truncated_total_roth += y_from_roth
         truncated_total_living += y_living
         truncated_total_req_income += y_req_income
+        t_brok_gains += y_brok_gains
 
+        yr_short = str(y_row['year'])[-2:]
         ledger_pdf_rows.append([
-            Paragraph(f"Yr {y_row['year']}", cell_bold), Paragraph(pct_val, cell_reg), 
+            Paragraph(f"{y_idx + 1}", cell_bold), Paragraph(yr_short, cell_reg), Paragraph(pct_val, cell_reg), 
             Paragraph(f"${y_row['start_brokerage']:,.0f}", cell_right), Paragraph(f"${y_row['start_trad']:,.0f}", cell_right), Paragraph(f"${y_row['start_roth']:,.0f}", cell_right), 
             Paragraph(f"${y_living:,.0f}", cell_right), Paragraph(f"${c_tax:,.0f}", cell_right), Paragraph(f"${y_row['healthcare_cost']:,.0f}", cell_right), 
-            Paragraph(f"${y_row['pension_ss_rent']:,.0f}", cell_right), Paragraph(f"${y_req_income:,.0f}", cell_right), Paragraph(f"${y_from_inflow:,.0f}", cell_right), 
+            Paragraph(f"${y_row['pension_ss_rent']:,.0f}", cell_right), Paragraph(f"${y_brok_gains:,.0f}", cell_right), Paragraph(f"${y_req_income:,.0f}", cell_right), Paragraph(f"${y_from_inflow:,.0f}", cell_right), 
             Paragraph(f"${y_from_brokerage:,.0f}", cell_right), Paragraph(f"${y_from_roth:,.0f}", cell_right), Paragraph(f"${y_row['end_roth']:,.0f}", cell_right)
         ])
         active_years_data.append(y_row)
@@ -389,11 +389,12 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
             break
 
     ledger_pdf_rows.append([
-        Paragraph("TOTALS", cell_bold), Paragraph("-", cell_reg), Paragraph("-", cell_reg), Paragraph("-", cell_reg), Paragraph("-", cell_reg), 
+        Paragraph("TOTALS", cell_bold), Paragraph("-", cell_reg), Paragraph("-", cell_reg), Paragraph("-", cell_reg), Paragraph("-", cell_reg), Paragraph("-", cell_reg), 
         Paragraph(f"${truncated_total_living:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)),
         Paragraph(f"${truncated_total_taxes:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
         Paragraph(f"${truncated_total_health:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
         Paragraph(f"${truncated_total_base_inflow:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
+        Paragraph(f"${t_brok_gains:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
         Paragraph(f"${truncated_total_req_income:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)),
         Paragraph(f"${truncated_total_util_inflow:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
         Paragraph(f"${truncated_total_brokerage:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
@@ -401,7 +402,7 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         Paragraph("-", cell_reg)
     ])
 
-    t_ledg = Table(ledger_pdf_rows, colWidths=[35, 40, 52, 52, 52, 52, 48, 52, 55, 55, 52, 52, 52, 53])
+    t_ledg = Table(ledger_pdf_rows, colWidths=[20, 22, 38, 50, 50, 50, 48, 48, 48, 50, 48, 52, 48, 48, 48, 64])
     t_ledg.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1F497D')), 
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
@@ -431,24 +432,23 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
     chart_trad_bal = [r.get("end_trad", 0.0) for r in active_years_data]
     chart_req_income = [r.get("required_income", 0.0) for r in active_years_data]
 
-    story.append(Paragraph("INTEGRATED RETIREMENT RESERVES DYNAMICS (BALANCES VS WITHDRAWALS WITH REQ INCOME OVERLAY)", sub_section_style))
+    story.append(Paragraph("INTEGRATED RETIREMENT RESERVES DYNAMICS (BALANCES VS WITHDRAWALS WITH REQ INCOME OVERLAY)", section_style))
     d_br_chart = Drawing(752, 145)
     br_vbc = VerticalBarChart()
     br_vbc.x, br_vbc.y, br_vbc.height, br_vbc.width = 45, 15, 95, 660
-    
+
+    # UNIFIED GLOBAL ACCOUNT COLOR PALETTE RE-SYNCHRONIZATION
     br_vbc.data = [chart_trad_bal, chart_brok_bal, chart_roth_bal, chart_brok_draw, chart_roth_draw]
     br_vbc.categoryAxis.categoryNames = chart_years
-    br_vbc.categoryAxis.labels.fontSize = 6
-    br_vbc.categoryAxis.labels.fontName = 'Helvetica-Bold'
+    br_vbc.categoryAxis.labels.fontSize = 5.5
+    br_vbc.categoryAxis.labels.angle = 45
     
-    max_val_br = max(max(chart_trad_bal + chart_brok_bal + chart_roth_bal + chart_brok_draw + chart_roth_draw + chart_req_income), 1000)
+    max_val_dynamics = max(max(chart_trad_bal), max(chart_brok_bal), max(chart_roth_bal)) * 1.10 if chart_trad_bal else 100000
     br_vbc.valueAxis.valueMin = 0
-    br_vbc.valueAxis.valueMax = max_val_br * 1.05
-    br_vbc.valueAxis.valueStep = br_vbc.valueAxis.valueMax / 4
+    br_vbc.valueAxis.valueMax = max_val_dynamics
+    br_vbc.valueAxis.valueStep = max_val_dynamics / 5
     br_vbc.valueAxis.labels.fontSize = 6
-    br_vbc.valueAxis.labels.fontName = 'Helvetica'
-    
-    # UNIFIED GLOBAL ACCOUNT COLOR PALETTE RE-SYNCHRONIZATION
+
     br_vbc.bars[0].fillColor = colors.HexColor('#34495E') # Traditional 401(k) Balance (Slate Charcoal)
     br_vbc.bars[1].fillColor = colors.HexColor('#1F497D') # Brokerage Balance (Corporate Navy - MATCHED SYSTEMWIDE)
     br_vbc.bars[2].fillColor = colors.HexColor('#2E7D32') # Roth Balance (Medium Green - MATCHED SYSTEMWIDE)
@@ -567,37 +567,28 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         vbc.valueAxis.valueStep = vbc.valueAxis.valueMax / 4
         vbc.valueAxis.labels.fontSize, vbc.valueAxis.labels.fontName = 6, 'Helvetica'
         
-        vbc.bars[0].fillColor = colors.HexColor('#34495E') # Pre-Tax Traditional
-        vbc.bars[1].fillColor = colors.HexColor('#2E7D32') # Tax-Free Roth Pool
-        vbc.bars[2].fillColor = colors.HexColor('#1F497D') # Taxable Brokerage
+        vbc.bars[0].fillColor = colors.HexColor('#34495E')  # Traditional 401(k) (Slate Charcoal)
+        vbc.bars[1].fillColor = colors.HexColor('#2E7D32')  # Roth Pool (Medium Green)
+        vbc.bars[2].fillColor = colors.HexColor('#1F497D')  # Taxable Brokerage (Corporate Navy)
         d_chart.add(vbc)
         
-        # --- FIXED LEGEND TO APPENDIX TRACKERS ---
-        sub_legend = Legend()
-        sub_legend.fontName = 'Helvetica'
-        sub_legend.fontSize = 6
-        sub_legend.x = 440
-        sub_legend.y = 110
-        sub_legend.dxTextSpace = 4
-        sub_legend.dy = 4
-        sub_legend.dx = 10
-        sub_legend.columnMaximum = 1
-        sub_legend.alignment = 'right'
-        sub_legend.colorNamePairs = [
-            (colors.HexColor('#34495E'), 'Traditional 401(k)'),
-            (colors.HexColor('#2E7D32'), 'Roth Pool'),
-            (colors.HexColor('#1F497D'), 'Brokerage Pool')
-        ]
-        d_chart.add(sub_legend)
+        d_chart.add(String(45, 105, f"Year {y_row['year']} Month-by-Month Allocation Stacked Drawdown Trajectory Pool Breakdown Matrix", fontName="Helvetica-Bold", fontSize=7, fillColor=colors.HexColor('#1F497D')))
         
-        d_chart.add(String(85, 110, f"Year {y_row['year']} Month-by-Month Allocation Stacked Drawdown Trajectory Pool Breakdown Matrix", fontName="Helvetica-Bold", fontSize=7, fillColor=colors.HexColor('#1F497D')))
+        sub_legend = Legend()
+        sub_legend.x = 45
+        sub_legend.y = 95
+        sub_legend.alignment = 'right'
+        sub_legend.fontName, sub_legend.fontSize = 'Helvetica', 6
+        sub_legend.columnMaximum = 1
+        sub_legend.colorNamePairs = [(colors.HexColor('#34495E'), 'Traditional 401(k)'), (colors.HexColor('#2E7D32'), 'Roth Pool'), (colors.HexColor('#1F497D'), 'Taxable Brokerage')]
+        d_chart.add(sub_legend)
         year_block_flowables.append(d_chart); year_block_flowables.append(Spacer(1, 4))
         
-        t_months = Table(month_table_rows, colWidths=[40, 55, 55, 55, 55, 55, 55, 382])
+        t_months = Table(month_table_rows, colWidths=[38, 48, 50, 50, 50, 50, 50, 416])
         t_months.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1F497D')), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('INNERGRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7E9')), ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#1F497D')), ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F8F9F9')])]))
         year_block_flowables.append(t_months); year_block_flowables.append(Spacer(1, 6))
 
-        conversion_target_val = y_row.get("conversion_target", 0.00)
+        conversion_target_val = y_row.get("actual_conversion", 0.00)
         if y_row["end_trad"] <= 0.01:
             conv_reminder_text = "Traditional pre-tax balance fully depleted. Active core conversions satisfied cleanly."
         else:
@@ -608,7 +599,7 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
             [Paragraph("Taxable Brokerage / Cash", cell_bold), Paragraph(f"${y_row['start_brokerage']:,.2f}", cell_right), Paragraph(f"${y_row['end_brokerage']:,.2f}", cell_right), Paragraph(conv_reminder_text, cell_left_text)],
             [Paragraph("Traditional Pre-Tax 401(k)", cell_bold), Paragraph(f"${y_row['start_trad']:,.2f}", cell_right), Paragraph(f"${y_row['end_trad']:,.2f}", cell_right), Paragraph("", cell_left_text)],
             [Paragraph("Tax-Free Combined Roth Pool", cell_bold), Paragraph(f"${y_row['start_roth']:,.2f}", cell_right), Paragraph(f"${y_row['end_roth']:,.2f}", cell_right), Paragraph("", cell_left_text)]
-        ], colWidths=[160, 120, 120, 352])
+        ], colWidths=[150, 120, 120, 362])
         
         t_bal.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#34495E')), 

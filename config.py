@@ -17,9 +17,9 @@ PHASE_1_DURATION_YEARS = 7  # Specify exactly how long Phase 1 (Low Income/Holid
 
 # 2. Starting Asset Balances
 STARTING_BALANCES = {
-    "brokerage_1": 91313.29,
+    "brokerage_1": 71313.29,
     "brokerage_2": 15673.00,
-    "house_sale_proceeds": 300000.00,  # Re-injects your $300k sales proceed shield
+    "house_sale_proceeds": 350000.00,  # Re-injects your $300k sales proceed shield
     "house_equity_invested": 0.00,
     "trad_401k": 1476432.85,
     "roth_pool": 130967.93             # CRITICAL: Grandfathered baseline pool
@@ -31,6 +31,9 @@ TOTAL_INITIAL_BROKERAGE = (
     STARTING_BALANCES["house_sale_proceeds"] + 
     STARTING_BALANCES["house_equity_invested"]
 )
+
+
+
 
 # 3. Market and Yield Economic Parameters
 GROWTH_RATE = 0.06             # 6.0% Portfolio Core Growth Rate
@@ -50,6 +53,11 @@ SPENDING = {
     "phase2_living_expense": 100000.00,
     "phase2_healthcare_cost": 9600.00
 }
+
+
+
+
+
 
 # RETIREMENT LIFESTYLE AGING "SMILE CURVE" MODIFIERS
 LIFESTYLE_AGING_MODIFIERS = {

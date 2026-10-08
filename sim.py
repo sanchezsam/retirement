@@ -1,24 +1,38 @@
 # -*- coding: utf-8 -*-
 """
-RETIREMENT RUNWAY BALANCES OPTIMIZER - INTEGRATED PRODUCTION ENGINE
-Compiles pathways, global module imports, and progressive tax calculations.
-Safeguards: Hard Bracket Ceilings, Pre-Tax Draw Lockouts, and IRS 5-Year Clock Violations.
-Integrates annual brokerage asset income/yield natively into bracket headroom limits and tax drag.
-Explicitly displays annual brokerage yield/dividends as a column in the ledger overview.
+RETIREMENT RUNWAY SENSITIVITY ANALYSIS SYSTEM - STANDALONE ENGINE
+File: sim.py
+Description: Manages self-contained financial projections, progressive tax models,
+             and automated binary searches for minimal principal thresholds.
+Features: Renders Scenario 1 and Scenario 2 metrics simultaneously on boot.
+          Prompts for scenario selection upfront before generating the combinations tree.
+          Evaluates the strategy variations scoreboard specific to that scenario's cash flows.
+          Enforces a flat 0% asset yield drag on non-retirement brokerage capital.
+          Displays the complete matrix scoreboard of different tax bracket percentage 
+          options before prompting for line-by-line inspection.
+Budget Lockout Engine: Initial brokerage capital is strictly locked to your config limits 
+                       defined dynamically as the sum of Base Cash + House Proceeds.
+                       Cash on hand is treated as an immutable constant that cannot increase;
+                       the portfolio can only expand via house sale proceeds adjustments.
+                       Scenario 1 and Scenario 2 strictly use their respective solved minimum 
+                       house sale proceeds in-memory to guarantee distinct scenario benchmarks.
 Loophole Repair: Strictly audits tax liabilities drawn from the Roth pool against the 5-year clock calendar.
+Completely standalone and independent with zero cross-imports from other strategy optimization modules.
 """
 import os
 import sys
 import itertools
 import importlib.util
 
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+# Ensure local directory takes precedence in path lookups
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 try:
     import config
 except ImportError:
-    print("[ERROR] Optimization script must be placed in the same folder as config.py")
+    print("[ERROR] Simulation script must be placed in the same folder as config.py")
     sys.exit(1)
+
 
 def calc_marginal_tax(taxable_income, deduction, brackets):
     """Core mathematical engine for standard marginal tax brackets."""
@@ -32,6 +46,7 @@ def calc_marginal_tax(taxable_income, deduction, brackets):
         prev_ceiling = ceiling
     return 0.00
 
+
 def calculate_progressive_taxes(income):
     """Pulls bracket structures from config and evaluates combined marginal liabilities."""
     fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
@@ -44,10 +59,12 @@ def calculate_progressive_taxes(income):
     nm_tax = calc_marginal_tax(income, nm_deduction, nm_brackets)
     return fed_tax, nm_tax
 
-def run_financial_simulation(bracket_schedule):
+
+def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_rent=None, custom_living=None):
     """
     30-Year Financial Simulation Matrix. Fully resolves cash distributions, 
     tax-drag ordering, and annual investment/cash market compounding.
+    Allows dynamic overrides for multi-variable sensitivity analysis.
     """
     timeline_data = []
     
@@ -59,11 +76,19 @@ def run_financial_simulation(bracket_schedule):
     penalty_free_basis = starting_balances.get("roth_pool", 130967.93)
     active_conversion_ladder = {}
     
-    brokerage_pool = getattr(config, "TOTAL_INITIAL_BROKERAGE", 406986.29)
+    if custom_brokerage is not None:
+        brokerage_pool = custom_brokerage
+    else:
+        base_cash = getattr(config, "BASE_CASH", 71000.00)
+        total_brok_config = getattr(config, "TOTAL_INITIAL_BROKERAGE", 436986.29)
+        house_proceeds = getattr(config, "HOUSE_PROCEEDS", total_brok_config - base_cash)
+        brokerage_pool = base_cash + house_proceeds
     
     growth_rate = getattr(config, "GROWTH_RATE", 0.06)
-    cash_yield = getattr(config, "CASH_YIELD_RATE", 0.04)
     inflation_rate = getattr(config, "INFLATION_RATE", 0.03)
+    
+    # Cash yield rate set to 0% for brokerage assets to eliminate interest accumulation
+    cash_yield = 0.00 
     
     phase1_duration = getattr(config, "PHASE_1_DURATION_YEARS", 7)
     spending_matrix = getattr(config, "SPENDING", {})
@@ -96,16 +121,22 @@ def run_financial_simulation(bracket_schedule):
         start_trad = traditional_401k
         start_roth = roth_pool
         
-        # TAX DRAG FACTORING: Calculate brokerage annual yield income up front
+        # Brokerage gains evaluate to exactly 0.00 due to flat non-increasing configuration
         brokerage_gains = start_brokerage * cash_yield
         
         remaining_runway_years = max(1, 61 - wife_age)
         inflation_multiplier = (1.0 + inflation_rate) ** year_idx
         
         if year_idx < phase1_duration:
-            living_exp = spending_matrix.get("phase1_living_expense", 65000.00) * inflation_multiplier
+            if custom_living is not None:
+                living_exp = custom_living * inflation_multiplier
+            else:
+                living_exp = spending_matrix.get("phase1_living_expense", 65000.00) * inflation_multiplier
             health_cost = spending_matrix.get("phase1_healthcare_cost", 0.00) * inflation_multiplier
-            rental_income = spending_matrix.get("phase1_rental_income", 0.00)
+            if custom_rent is not None:
+                rental_income = custom_rent
+            else:
+                rental_income = spending_matrix.get("phase1_rental_income", 24000.00)
             base_outflows = living_exp + health_cost
             baseline_inflows = rental_income
         else:
@@ -177,7 +208,7 @@ def run_financial_simulation(bracket_schedule):
             else:
                 conversion_target = 545650.00
             
-            # Anti-spillover ceiling boundary protection includes brokerage gains tax-drag space
+            # Headroom calculations clear smoothly with zeroed brokerage interest gains
             conversion_target = max(0.00, conversion_target - from_401k - brokerage_gains)
             
             if remaining_runway_years <= 1:
@@ -190,7 +221,7 @@ def run_financial_simulation(bracket_schedule):
         if actual_conversion > 0:
             active_conversion_ladder[current_year] = active_conversion_ladder.get(current_year, 0.00) + actual_conversion
 
-        # Compile progressive tax calculations with integrated brokerage income
+        # Compile progressive tax calculations with flat asset yields
         y_total_taxable_income = actual_conversion + from_401k + brokerage_gains
         fed_tax, nm_tax = calculate_progressive_taxes(y_total_taxable_income)
         total_taxes = fed_tax + nm_tax
@@ -259,8 +290,8 @@ def run_financial_simulation(bracket_schedule):
                     "penalty_paid": penalty if m_name == active_start_month and penalty > 0 else 0.00
                 })
 
-        # Apply specific asset growth splits natively
-        brokerage_pool *= (1.0 + cash_yield)
+        # Brokerage pool remains completely flat with 0% compounding applied
+        brokerage_pool *= 1.00
         traditional_401k *= (1.0 + growth_rate)
         roth_pool *= (1.0 + growth_rate)
         
@@ -275,7 +306,7 @@ def run_financial_simulation(bracket_schedule):
             "start_brokerage": start_brokerage, "start_trad": start_trad, "start_roth": start_roth,
             "end_brokerage": brokerage_pool, "end_trad": traditional_401k, "end_roth": roth_pool, 
             "fed_tax": fed_tax, "nm_tax": nm_tax, "total_taxes": total_taxes, "living_expense": living_exp,
-            "healthcare_cost": health_cost, "pension_ss_rent": baseline_inflows, "monthly_ledger": monthly_ledger,
+            "healthcare_cost": health_cost, "pension_ss_rent": from_inflow, "monthly_ledger": monthly_ledger,
             "actual_conversion": actual_conversion,
             "true_taxable_income": y_total_taxable_income,
             "required_income": living_exp + total_taxes + health_cost,
@@ -289,21 +320,84 @@ def run_financial_simulation(bracket_schedule):
             
     return timeline_data
 
-def generate_all_balance_driven_combinations():
+
+def execute_sensitivity_analysis_solvers(optimal_rotation, custom_living=None):
+    """Calculates minimal house proceed requirements while holding base cash fixed."""
+    print("="*95)
+    print("        EXECUTING RE-VERIFIED SENSITIVITY SOLVER SIMULATION DATA LAYOUT")
+    print("="*95)
+    
+    base_cash_global = getattr(config, "BASE_CASH", 71000.00)
+    spending_matrix = getattr(config, "SPENDING", {})
+    config_rent = spending_matrix.get("phase1_rental_income", 24000.00)
+    base_rent_scen1 = max(24000.00, config_rent)
+    
+    # --- SCENARIO 1 SOLVER: RENT ACTIVE, SOLVE FOR REFERENCE HOUSE FLOOR ---
+    low_h1, high_h1 = 0.0, 3000000.0
+    min_house_needed_1 = high_h1
+    for _ in range(35):
+        mid_h1 = (low_h1 + high_h1) / 2.0
+        total_brok = base_cash_global + mid_h1
+        sim_data = run_financial_simulation(optimal_rotation, custom_brokerage=total_brok, custom_rent=base_rent_scen1, custom_living=custom_living)
+        
+        success = True
+        for y_row in sim_data:
+            if (y_row.get("end_brokerage", 0.0) + y_row.get("end_trad", 0.0) + y_row.get("end_roth", 0.0)) <= 500.00:
+                success = False
+            for m_data in y_row.get("monthly_ledger", []):
+                if m_data.get("penalty_paid", 0.00) > 0.01 or m_data.get("from_401k", 0.00) > 0.01:
+                    success = False
+        if success:
+            min_house_needed_1 = mid_h1
+            high_h1 = mid_h1
+        else:
+            low_h1 = mid_h1
+            
+    print(f"Scenario 1: Active Flat Rental Inflow = ${base_rent_scen1:,.2f}/Yr, Fixed Base Cash = ${base_cash_global:,.2f}")
+    print(f"  ├── Implied Minimum House Sale Proceeds Required   : ${min_house_needed_1:,.2f}")
+    print(f"  └── Resulting Total Initial Brokerage Pool         : ${base_cash_global + min_house_needed_1:,.2f}")
+    
+    # --- SCENARIO 2 SOLVER: RENT AT $0.00, SOLVE FOR REQUIRED HOUSE FLOOR ---
+    low_h2, high_h2 = 0.0, 3000000.0
+    min_house_needed_2 = high_h2
+    for _ in range(35):
+        mid_h2 = (low_h2 + high_h2) / 2.0
+        total_brok = base_cash_global + mid_h2
+        sim_data = run_financial_simulation(optimal_rotation, custom_brokerage=total_brok, custom_rent=0.00, custom_living=custom_living)
+        
+        success = True
+        for y_row in sim_data:
+            if (y_row.get("end_brokerage", 0.0) + y_row.get("end_trad", 0.0) + y_row.get("end_roth", 0.0)) <= 500.00:
+                success = False
+            for m_data in y_row.get("monthly_ledger", []):
+                if m_data.get("penalty_paid", 0.00) > 0.01 or m_data.get("from_401k", 0.00) > 0.01:
+                    success = False
+        if success:
+            min_house_needed_2 = mid_h2
+            high_h2 = mid_h2
+        else:
+            low_h2 = mid_h2
+            
+    print(f"\nScenario 2: Dead Rental Stream (Rent = $0.00), Fixed Base Cash = ${base_cash_global:,.2f}")
+    print(f"  ├── Implied Minimum House Sale Proceeds Required   : ${min_house_needed_2:,.2f}")
+    print(f"  └── Resulting Total Initial Brokerage Pool         : ${base_cash_global + min_house_needed_2:,.2f}")
+    print("="*95)
+    return min_house_needed_1, min_house_needed_2
+
+
+def generate_all_balance_driven_combinations(custom_brokerage, custom_rent, custom_living):
     """Generates all conversion paths restricted strictly to years before Wife turns 61."""
     bracket_options = getattr(config, "AVAILABLE_BRACKET_CHOICES", [0, 22, 24])
     unique_executed_keys = set()
     absolute_results_pool = []
     
     target_runway_horizon = max(1, 61 - getattr(config, "WIFE_START_AGE", 47)) 
-    print(f"[INFO] Dynamically walking combination tree paths for a fixed {target_runway_horizon}-Year Runway...")
-    
     raw_permutations = list(itertools.combinations_with_replacement(bracket_options, target_runway_horizon))
             
     for permutation in raw_permutations:
         rotation_list = list(permutation)
         
-        simulation_data = run_financial_simulation(rotation_list)
+        simulation_data = run_financial_simulation(rotation_list, custom_brokerage=custom_brokerage, custom_rent=custom_rent, custom_living=custom_living)
         if not simulation_data or len(simulation_data) == 0:
             continue
             
@@ -327,7 +421,8 @@ def generate_all_balance_driven_combinations():
             
     return absolute_results_pool, getattr(config, "DYNAMIC_BRACKET_SCHEDULE", [])
 
-def score_unrestricted_matrix(absolute_results_pool, original_schedule):
+
+def score_unrestricted_matrix(absolute_results_pool, original_schedule, custom_brokerage, custom_rent, custom_living):
     """Disqualifies strategies with ordinary 401k draws or IRS penalties. Ranks by Ending Estate."""
     optimization_scoreboard = []
     if not absolute_results_pool:
@@ -337,17 +432,13 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
     max_estate_found = 0.0
     for item in absolute_results_pool:
         sim_data = item["simulation_data"]
-        
         violates_rules = False
         for year_row in sim_data:
             for m_data in year_row.get("monthly_ledger", []):
-                if m_data.get("from_401k", 0.00) > 0.01:
-                    violates_rules = True
-                if m_data.get("is_irs_violation", False) or m_data.get("penalty_paid", 0.00) > 0.01:
+                if m_data.get("from_401k", 0.00) > 0.01 or m_data.get("penalty_paid", 0.00) > 0.01:
                     violates_rules = True
             if violates_rules:
                 break
-                
         if sim_data[-1].get("end_trad", 0.00) <= 500.00 and not violates_rules:
             ending_estate = sim_data[-1].get("end_brokerage", 0.00) + sim_data[-1].get("end_trad", 0.00) + sim_data[-1].get("end_roth", 0.00)
             if ending_estate > max_estate_found:
@@ -367,13 +458,10 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
         is_illegal_strategy = False
         for year_row in simulation_data:
             for m_data in year_row.get("monthly_ledger", []):
-                if m_data.get("from_401k", 0.00) > 0.01:
-                    is_illegal_strategy = True
-                if m_data.get("is_irs_violation", False) or m_data.get("penalty_paid", 0.00) > 0.01:
+                if m_data.get("from_401k", 0.00) > 0.01 or m_data.get("penalty_paid", 0.00) > 0.01:
                     is_illegal_strategy = True
             if is_illegal_strategy:
                 break
-                
         if is_illegal_strategy:
             continue
             
@@ -399,7 +487,6 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
                 is_brokerage_broken = True
 
         risk_sig = "BROK_DEPLETED" if is_brokerage_broken else "CLEAN RUNWAY"
-            
         final_year_record = simulation_data[-1]
         total_lifetime_taxes = sum(year_row.get("total_taxes", 0.00) for year_row in simulation_data)
         ending_total_estate = final_year_record.get("end_brokerage", 0.00) + final_year_record.get("end_trad", 0.00) + final_year_record.get("end_roth", 0.00)
@@ -411,24 +498,15 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
 
         base_suitability_score = estate_score + liq_score + clock_score + tax_efficiency_score
         final_suitability_score = base_suitability_score
-        
-        is_pure_flat_track = len(set([b for br in executed_brackets if (b := br) > 0])) <= 1
-        if is_pure_flat_track:
+        if len(set([b for br in executed_brackets if (b := br) > 0])) <= 1:
             final_suitability_score += 15.0
-            
         final_suitability_score = min(100.0, final_suitability_score)
             
         optimization_scoreboard.append({
-            "rotation_sequence": executed_brackets, 
-            "years_to_convert": actual_clear_year, 
-            "lifetime_taxes_paid": total_lifetime_taxes,
-            "net_total_estate": ending_total_estate, 
-            "risk_profile": risk_sig, 
-            "liq_buffer": liq_score,
-            "clock_safety": clock_score, 
-            "roth_split": estate_score,        
-            "legis_risk": tax_efficiency_score, 
-            "suitability_score": final_suitability_score,
+            "rotation_sequence": executed_brackets, "years_to_convert": actual_clear_year, 
+            "lifetime_taxes_paid": total_lifetime_taxes, "net_total_estate": ending_total_estate, 
+            "risk_profile": risk_sig, "liq_buffer": liq_score, "clock_safety": clock_score, 
+            "roth_split": estate_score, "legis_risk": tax_efficiency_score, "suitability_score": final_suitability_score,
             "simulation_data": simulation_data
         })
 
@@ -436,70 +514,121 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
     optimization_scoreboard.sort(key=lambda x: (x["suitability_score"], x["net_total_estate"]), reverse=True)
     return optimization_scoreboard
 
-def format_carryover_sequence(sequence_list, field_width=78):
-    """Formats array sequences into wrapped terminal string chunks cleanly."""
-    raw_segments = [f"{pct}%" for pct in sequence_list]
-    max_elements_per_line = 6
-    if len(raw_segments) <= max_elements_per_line:
-        return " -> ".join(raw_segments).ljust(field_width)
-    line_chunks = []
-    for i in range(0, len(raw_segments), max_elements_per_line):
-        line_chunks.append(" -> ".join(raw_segments[i:i+max_elements_per_line]))
-    return ("\n      └──> ").join(line_chunks).ljust(field_width)
 
-def print_complete_unrestricted_scoreboard(scoreboard_data):
-    """Outputs the core retirement benchmark matrix scoreboard wrapper overview."""
-    print("\n" + "="*150)
-    print("             CORE RETIREMENT STABILITY BENCHMARK SUITABILITY MATRIX OVERVIEW")
-    print("="*150)
-    print(f"{'Strategic Performance Metric Pillar Profile':<50} | {'22% Strategy':<15} | {'24% Strategy':<15} | {'Custom Hybrid Strategy':<15}")
-    print("-"*150)
-    print(f"FINAL RETIREMENT SUITABILITY INDEX                 | {'95.0 / 100':<15} | {'92.8 / 100':<15} | {'89.6 / 100':<15}")
-    print("="*150)
-
-    print("\n" + "="*195)
-    print("             RANKED RETIREMENT MATRIX SCOREBOARD: COMPREHENSIVE STRATEGY VARIATIONS")
-    print("="*195)
-    print(f"{'Rank':<5} | {'Bracket Rotation Sequence Pattern':<78} | {'Clear':<7} | {'Est Taxes':<14} | {'End Estate':<15} | {'Liq Buffer':<11} | {'IRS Clock':<10} | {'Roth Split':<11} | {'Legis Risk':<12} | {'FINAL SCORE':<12}")
-    print("-"*195)
+if __name__ == "__main__":
+    spending_matrix = getattr(config, "SPENDING", {})
+    config_rent = spending_matrix.get("phase1_rental_income", 24000.00)
+    custom_living = spending_matrix.get("phase1_living_expense", 65000.00)
+    base_cash_global = getattr(config, "BASE_CASH", 71000.00)
     
-    for rank_idx, record in enumerate(scoreboard_data[:30], start=1):
-        sequence_str = format_carryover_sequence(record["rotation_sequence"], field_width=78)
-        years_str = f"{record['years_to_convert']} Yrs"
-        tax_str = f"${record['lifetime_taxes_paid']:,.2f}"
-        estate_str = f"${record['net_total_estate']:,.2f}"
-        liq_str = f"{record['liq_buffer']:.1f}"
-        clock_str = f"{record['clock_safety']:.1f}"
-        roth_str = f"{record['roth_split']:.1f}"
-        legis_str = f"{record['legis_risk']:.1f}"
-        score_str = f"{record['suitability_score']:.1f} / 100"
+    if hasattr(config, "TOTAL_INITIAL_BROKERAGE"):
+        total_brok_config = config.TOTAL_INITIAL_BROKERAGE
+        house_proceeds_global = getattr(config, "HOUSE_PROCEEDS", total_brok_config - base_cash_global)
+    else:
+        house_proceeds_global = getattr(config, "HOUSE_PROCEEDS", 300000.00)
+        total_brok_config = base_cash_global + house_proceeds_global
         
-        base_lines = sequence_str.split('\n')
-        print(f"{rank_idx:<5} | {base_lines[0]:<78} | {years_str:<7} | {tax_str:<14} | {estate_str:<15} | {liq_str:<11} | {clock_str:<10} | {roth_str:<11} | {legis_str:<12} | {score_str:<12}")
-        for extra_line in base_lines[1:]:
-            print(f"{'':<5} | {extra_line:<78} | {'':<7} | {'':<14} | {'':<15} | {'':<11} | {'':<10} | {'':<11} | {'':<12} | {'':<12}")
-            
-    print("="*195)
+    # 1. Output simultaneous dual-sensitivity statistics immediately on boot
+    min_house_1, min_house_2 = execute_sensitivity_analysis_solvers([22, 22, 22, 22, 22, 22, 22, 22], custom_living=custom_living)
+    
+    # 2. Prompt for scenario context selection upfront
+    print("\n" + "="*95)
+    print("        SCENARIO OPTIMIZATION CHOICE CONTEXT MENU")
+    print("="*95)
+    print("1. Optimize Scenario 1 (Preserve Active Rental Inflow from config)")
+    print("2. Optimize Scenario 2 (Force Rental Inflow down to $0.00 for life)")
+    print("="*95)
     
     while True:
-        if len(scoreboard_data) == 0:
+        scenario_choice = input("Select context scenario to run optimization (1-2): ").strip()
+        if scenario_choice in ["1", "2"]:
             break
-        print("\n" + "-"*85)
+        print("[ERROR] Invalid choice. Please enter 1 or 2.")
+        
+    if scenario_choice == "1":
+        custom_rent = max(24000.00, config_rent)
+        # --- FIXED ALIGNMENT RECONCILIATION: Initialize exactly at the solved scenario bedrock floor ---
+        selected_house_proceeds = min_house_1
+        custom_brokerage_selected = base_cash_global + selected_house_proceeds
+        scen_title = f"SCENARIO 1 (RENT ACTIVE AT ${custom_rent:,.2f}/YR | BROKERAGE SET TO MINIMUM SHORTFALL BEDROCK: ${custom_brokerage_selected:,.2f} [Base Cash: ${base_cash_global:,.2f} LOCKED + House Sale Floor: ${selected_house_proceeds:,.2f}])"
+    else:
+        custom_rent = 0.00
+        # --- FIXED ALIGNMENT RECONCILIATION: Initialize exactly at the solved scenario bedrock floor ---
+        selected_house_proceeds = min_house_2
+        custom_brokerage_selected = base_cash_global + selected_house_proceeds
+        scen_title = f"SCENARIO 2 (DEAD RENTAL STREAM | BROKERAGE SET TO MINIMUM SHORTFALL BEDROCK: ${custom_brokerage_selected:,.2f} [Base Cash: ${base_cash_global:,.2f} LOCKED + House Sale Floor: ${selected_house_proceeds:,.2f}])"
+
+    # 3. Generate percentage options scoreboard tailored to selected scenario constraints
+    while True:
+        raw_pool, cached_sched = generate_all_balance_driven_combinations(
+            custom_brokerage=custom_brokerage_selected, custom_rent=custom_rent, custom_living=custom_living
+        )
+        completed_scoreboard = score_unrestricted_matrix(
+            raw_pool, cached_sched, custom_brokerage=custom_brokerage_selected, custom_rent=custom_rent, custom_living=custom_living
+        )
+        
+        if completed_scoreboard:
+            break
+            
+        print("\n" + "="*95)
+        print(f" [ALERT] Your current config.py values will not get the job done safely under {scen_title}!")
+        print("  Since you cannot add more money into the plan, you must scale down spending targets.")
+        print("="*95 + "\n")
+        
+        user_expense_input = input(f"Enter a reduced Phase 1 annual living expense value to test (Current: ${custom_living:,.2f}) or 'q' to quit: ").strip()
+        if user_expense_input.lower() == 'q':
+            sys.exit(0)
+        try:
+            val = float(user_expense_input)
+            if val <= 0:
+                print("[ERROR] Lifestyle expense target must be a positive number.")
+                continue
+            custom_living = val
+        except ValueError:
+            print("[ERROR] Invalid numeric entry.")
+
+    # 4. Display percentage options scoreboard specifically generated for your scenario choice
+    print("\n" + "="*175)
+    print(f"             RANKED RETIREMENT MATRIX SCOREBOARD FOR {scen_title}")
+    print("="*175)
+    print(f"{'Rank':<5} | {'Bracket Rotation Sequence Pattern':<60} | {'Clear':<7} | {'Est Taxes':<14} | {'End Estate':<16} | {'Liq Buffer':<11} | {'IRS Clock':<10} | {'Roth Split':<11} | {'Legis Risk':<11} | {'FINAL SCORE'}")
+    print("-"*175)
+    for idx, s_row in enumerate(completed_scoreboard):
+        rank = idx + 1
+        pat_str = " -> ".join(f"{br}%" for br in s_row["rotation_sequence"])
+        clear_str = f"{s_row['years_to_convert']} Yrs"
+        tax_str = f"${s_row['lifetime_taxes_paid']:,.2f}"
+        estate_str = f"${s_row['net_total_estate']:,.2f}"
+        liq = f"{s_row['liq_buffer']:.1f}"
+        clock = f"{s_row['clock_safety']:.1f}"
+        roth = f"{s_row['roth_split']:.1f}"
+        legis = f"{s_row['legis_risk']:.1f}"
+        score = f"{s_row['suitability_score']:.1f} / 100"
+        print(f"{rank:<5} | {pat_str:<60} | {clear_str:<7} | {tax_str:<14} | {estate_str:<16} | {liq:<11} | {clock:<10} | {roth:<11} | {legis:<11} | {score}")
+    print("="*175)
+
+    while True:
+        if len(completed_scoreboard) == 0:
+            print("[ERROR] Failed to compile viable baseline strategies even with fallback overrides.")
+            break
+        print("\n" + "-"*115)
         user_input = input("Select target strategy rank to inspect year-by-year details (or type 'q' to quit): ").strip()
-        if user_input.lower() == 'q': break
+        if user_input.lower() == 'q': 
+            break
             
         try:
             target_rank = int(user_input)
-            if target_rank < 1 or target_rank > len(scoreboard_data): continue
+            if target_rank < 1 or target_rank > len(completed_scoreboard): 
+                continue
                 
-            selected_record = scoreboard_data[target_rank - 1]
+            selected_record = completed_scoreboard[target_rank - 1]
             rotation_list = selected_record["rotation_sequence"]
-            full_timeline_data = run_financial_simulation(rotation_list)
             
+            full_timeline_data = run_financial_simulation(rotation_list, custom_brokerage=custom_brokerage_selected, custom_rent=custom_rent, custom_living=custom_living)
             pattern_display_str = " -> ".join(f"{br}%" for br in rotation_list)
             
             print("\n" + "="*286)
-            print(f" YEAR-BY-YEAR DETAIL DRAWDOWN LEDGER FOR RANK {target_rank} Pattern: {pattern_display_str} (Full 30-Year Projections)")
+            print(f" YEAR-BY-YEAR DETAIL DRAWDOWN LEDGER FOR RANK {target_rank} ({scen_title}) Pattern: {pattern_display_str}")
             print("="*286)
             print(f"{'#':<3} | {'Yr':<4} | {'Bracket':<7} | {'Brok Start':<14} | {'401k Start':<14} | {'Converted':<14} | {'Roth Start':<14} | {'Living Exp':<14} | {'Est Taxes':<12} | {'Health Cost':<12} | {'Inflow Base':<13} | {'Brok Yield':<12} | {'Req Income':<14} | {'From Broker':<13} | {'From Roth':<13} | {'From 401k':<13} | {'End Roth':<14}")
             print("-"*286)
@@ -508,7 +637,6 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
             
             for y_idx, y_row in enumerate(full_timeline_data):
                 combined_taxes = y_row.get("total_taxes", 0.00)
-                
                 if y_row.get("start_trad", 1.0) <= 500.00:
                     active_b_pct = "0%"
                 elif y_idx < len(rotation_list):
@@ -578,9 +706,4 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
             
         except (ValueError, KeyError, IndexError) as err:
             print(f"[ERROR] Selection visualization error: {err}")
-
-if __name__ == "__main__":
-    raw_pool, cached_sched = generate_all_balance_driven_combinations()
-    completed_scoreboard = score_unrestricted_matrix(raw_pool, cached_sched)
-    print_complete_unrestricted_scoreboard(completed_scoreboard)
 
