@@ -44,10 +44,11 @@ def calculate_progressive_taxes(income):
     nm_tax = calc_marginal_tax(income, nm_deduction, nm_brackets)
     return fed_tax, nm_tax
 
-def run_financial_simulation(bracket_schedule):
+
+def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_rent=None, custom_living=None):
     """
-    30-Year Financial Simulation Matrix. Fully resolves cash distributions, 
-    tax-drag ordering, and annual investment/cash market compounding.
+    Simulates a comprehensive 30-year drawdown timeline tracking liquid account
+    depletions, progressive tax drag, and chronological Roth contribution seasoning.
     """
     timeline_data = []
     
@@ -55,15 +56,23 @@ def run_financial_simulation(bracket_schedule):
     traditional_401k = starting_balances.get("trad_401k", 1476432.85)
     roth_pool = starting_balances.get("roth_pool", 130967.93)
     
-    # IRS CHRONOLOGICAL BASIS LADDER INITIALIZATION
+    # Track penalty-free original basis vs conversion seasoning windows
     penalty_free_basis = starting_balances.get("roth_pool", 130967.93)
     active_conversion_ladder = {}
     
-    brokerage_pool = getattr(config, "TOTAL_INITIAL_BROKERAGE", 406986.29)
-    
+    if custom_brokerage is not None:
+        brokerage_pool = custom_brokerage
+    else:
+        base_cash = getattr(config, "BASE_CASH", 71000.00)
+        total_brok_config = getattr(config, "TOTAL_INITIAL_BROKERAGE", 436986.29)
+        house_proceeds = getattr(config, "HOUSE_PROCEEDS", total_brok_config - base_cash)
+        brokerage_pool = base_cash + house_proceeds
+        
     growth_rate = getattr(config, "GROWTH_RATE", 0.06)
-    cash_yield = getattr(config, "CASH_YIELD_RATE", 0.04)
     inflation_rate = getattr(config, "INFLATION_RATE", 0.03)
+    
+    # 0% cash yield rate forces a flat brokerage account with no interest accumulation drag
+    cash_yield = 0.00
     
     phase1_duration = getattr(config, "PHASE_1_DURATION_YEARS", 7)
     spending_matrix = getattr(config, "SPENDING", {})
@@ -80,7 +89,7 @@ def run_financial_simulation(bracket_schedule):
         penalty = 0.00
         is_broken = False
         
-        # IRS Clock Seasoning: Move matured conversions into penalty-free basis
+        # Matured conversions move into penalty-free status after 5 calendar years
         target_seasoning_year = current_year - 5
         if target_seasoning_year in active_conversion_ladder:
             penalty_free_basis += active_conversion_ladder.pop(target_seasoning_year)
@@ -96,16 +105,18 @@ def run_financial_simulation(bracket_schedule):
         start_trad = traditional_401k
         start_roth = roth_pool
         
-        # TAX DRAG FACTORING: Calculate brokerage annual yield income up front
+        # Brokerage gains remain permanently 0.00 based on fixed flat cash directive
         brokerage_gains = start_brokerage * cash_yield
-        
-        remaining_runway_years = max(1, 61 - wife_age)
         inflation_multiplier = (1.0 + inflation_rate) ** year_idx
         
         if year_idx < phase1_duration:
-            living_exp = spending_matrix.get("phase1_living_expense", 65000.00) * inflation_multiplier
+            if custom_living is not None:
+                living_exp = custom_living * inflation_multiplier
+            else:
+                living_exp = spending_matrix.get("phase1_living_expense", 65000.00) * inflation_multiplier
             health_cost = spending_matrix.get("phase1_healthcare_cost", 0.00) * inflation_multiplier
-            rental_income = spending_matrix.get("phase1_rental_income", 0.00)
+            rental_income = custom_rent if custom_rent is not None else spending_matrix.get("phase1_rental_income", 24000.00)
+            
             base_outflows = living_exp + health_cost
             baseline_inflows = rental_income
         else:
@@ -125,7 +136,7 @@ def run_financial_simulation(bracket_schedule):
         if wife_age >= 62:
             baseline_inflows += getattr(config, "ANNUAL_SOCIAL_SECURITY", 100000.00) * inflation_multiplier
             
-        # Resolve Living Deficits and Distributions Chronologically
+        # Drawdown Priority Rule: Inflows -> Brokerage -> Roth -> Pre-tax 401k
         net_deficit = max(0.00, base_outflows - baseline_inflows)
         from_inflow = min(base_outflows, baseline_inflows)
         from_brokerage = from_401k = from_roth = 0.00
@@ -135,12 +146,12 @@ def run_financial_simulation(bracket_schedule):
             brokerage_pool -= from_brokerage
             net_deficit -= from_brokerage
             
-        # Chronological Outflow Basis Drawdown Processor
         if net_deficit > 0:
             from_roth = min(roth_pool, net_deficit)
             roth_pool -= from_roth
             net_deficit -= from_roth
             
+            # Audit Roth distributions against seasoned basis thresholds
             roth_draw_remaining = from_roth
             if penalty_free_basis > 0:
                 basis_drawn = min(roth_draw_remaining, penalty_free_basis)
@@ -158,7 +169,6 @@ def run_financial_simulation(bracket_schedule):
                         roth_draw_remaining -= ladder_drawn
                         is_broken = True
                         penalty += ladder_drawn * 0.10
-                
                 if penalty > 0:
                     roth_pool -= penalty
             
@@ -167,7 +177,7 @@ def run_financial_simulation(bracket_schedule):
             traditional_401k -= from_401k
             net_deficit -= from_401k
 
-        # Determine Conversion Target
+        # Process Systematic Bracket Rotations
         conversion_target = 0.00
         if active_bracket > 0:
             if active_bracket == 22:
@@ -177,10 +187,8 @@ def run_financial_simulation(bracket_schedule):
             else:
                 conversion_target = 545650.00
             
-            # Anti-spillover ceiling boundary protection includes brokerage gains tax-drag space
             conversion_target = max(0.00, conversion_target - from_401k - brokerage_gains)
-            
-            if remaining_runway_years <= 1:
+            if (61 - wife_age) <= 1:
                 conversion_target = traditional_401k
 
         actual_conversion = min(traditional_401k, conversion_target)
@@ -190,12 +198,12 @@ def run_financial_simulation(bracket_schedule):
         if actual_conversion > 0:
             active_conversion_ladder[current_year] = active_conversion_ladder.get(current_year, 0.00) + actual_conversion
 
-        # Compile progressive tax calculations with integrated brokerage income
+        # Calculate progressive ordinary income liabilities
         y_total_taxable_income = actual_conversion + from_401k + brokerage_gains
         fed_tax, nm_tax = calculate_progressive_taxes(y_total_taxable_income)
         total_taxes = fed_tax + nm_tax
         
-        # Pay conversion taxes from Brokerage, fallback to Roth if dry
+        # Deduct taxes from Brokerage, falling back on Roth if dry
         remaining_tax_to_pay = total_taxes
         tax_from_brokerage = 0.0
         tax_from_roth = 0.0
@@ -209,7 +217,7 @@ def run_financial_simulation(bracket_schedule):
             roth_pool -= tax_from_roth
             remaining_tax_to_pay -= tax_from_roth
             
-            # --- LOOPHOLE REPAIR: AUDIT TAX LIABILITIES AGAINST THE 5-YEAR LADDER WINDOWS ---
+            # --- CRITICAL LOOPHOLE REPAIR: AUDIT TAX EXTRACTIONS AGAINST ROTH LADDER CLOCKS ---
             tax_draw_remaining = tax_from_roth
             if penalty_free_basis > 0:
                 basis_drawn = min(tax_draw_remaining, penalty_free_basis)
@@ -228,22 +236,20 @@ def run_financial_simulation(bracket_schedule):
                         tax_draw_remaining -= ladder_drawn
                         is_broken = True
                         tax_penalty += ladder_drawn * 0.10
-                
                 if tax_penalty > 0:
                     penalty += tax_penalty
                     roth_pool -= tax_penalty
 
-        # Build ledger segments chronologically
+        # Generate structural monthly splits for downstream ledger reporting
         months_list = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
         active_start_month = getattr(config, "RETIREMENT_START_MONTH", "Feb") if year_idx == 0 else "Jan"
         active_month_index = months_list.index(active_start_month)
         total_active_months_in_year = 12.0 - active_month_index
         
-        monthly_inflow_split = from_inflow / total_active_months_in_year
-        monthly_brokerage_split = (from_brokerage + tax_from_brokerage) / total_active_months_in_year
-        monthly_roth_split = (from_roth + tax_from_roth) / total_active_months_in_year
-        monthly_401k_split = from_401k / total_active_months_in_year
-        
+        # Identify how many valid voucher payment windows fall within this year's active track
+        active_vouchers = [m for m in months_list[active_month_index:] if m in ["Jan", "Apr", "Jun", "Sep"]]
+        total_vouchers_this_year = len(active_vouchers) if active_vouchers else 4
+
         monthly_ledger = []
         for m_idx, m_name in enumerate(months_list):
             if m_idx < active_month_index:
@@ -252,18 +258,27 @@ def run_financial_simulation(bracket_schedule):
                     "is_irs_violation": False, "penalty_paid": 0.00
                 })
             else:
+                # 1. Distribute lifestyle expenses evenly across active runway months
+                m_inflow = from_inflow / total_active_months_in_year
+                m_brokerage = from_brokerage / total_active_months_in_year
+                m_roth = from_roth / total_active_months_in_year
+                m_401k = from_401k / total_active_months_in_year
+                
+                # 2. Restrict tax extractions strictly to actual legal voucher payment months
+                if m_name in active_vouchers:
+                    m_brokerage += tax_from_brokerage / total_vouchers_this_year
+                    m_roth += tax_from_roth / total_vouchers_this_year
+
                 monthly_ledger.append({
-                    "month": m_name, "from_inflow": monthly_inflow_split, "from_brokerage": monthly_brokerage_split,
-                    "from_roth": monthly_roth_split, "from_401k": monthly_401k_split,
+                    "month": m_name, "from_inflow": m_inflow, "from_brokerage": m_brokerage,
+                    "from_roth": m_roth, "from_401k": m_401k,
                     "is_irs_violation": is_broken if m_name == active_start_month and penalty > 0 else False,
                     "penalty_paid": penalty if m_name == active_start_month and penalty > 0 else 0.00
                 })
 
-        # Apply specific asset growth splits natively
-        brokerage_pool *= (1.0 + cash_yield)
+        # Apply market compounding to tax-advantaged vehicles only
         traditional_401k *= (1.0 + growth_rate)
         roth_pool *= (1.0 + growth_rate)
-        
         penalty_free_basis *= (1.0 + growth_rate)
         for c_yr in active_conversion_ladder:
             active_conversion_ladder[c_yr] *= (1.0 + growth_rate)
@@ -275,19 +290,18 @@ def run_financial_simulation(bracket_schedule):
             "start_brokerage": start_brokerage, "start_trad": start_trad, "start_roth": start_roth,
             "end_brokerage": brokerage_pool, "end_trad": traditional_401k, "end_roth": roth_pool, 
             "fed_tax": fed_tax, "nm_tax": nm_tax, "total_taxes": total_taxes, "living_expense": living_exp,
-            "healthcare_cost": health_cost, "pension_ss_rent": baseline_inflows, "monthly_ledger": monthly_ledger,
-            "actual_conversion": actual_conversion,
-            "true_taxable_income": y_total_taxable_income,
-            "required_income": living_exp + total_taxes + health_cost,
-            "brokerage_gains": brokerage_gains
+            "healthcare_cost": health_cost, "pension_ss_rent": from_inflow, "monthly_ledger": monthly_ledger,
+            "actual_conversion": actual_conversion, "true_taxable_income": y_total_taxable_income,
+            "required_income": living_exp + total_taxes + health_cost, "brokerage_gains": brokerage_gains
         }
         timeline_data.append(year_row)
         
-        total_remaining_assets = brokerage_pool + traditional_401k + roth_pool
-        if total_remaining_assets <= 1.00:
+        if (brokerage_pool + traditional_401k + roth_pool) <= 500.00:
             break
             
     return timeline_data
+
+
 
 def generate_all_balance_driven_combinations():
     """Generates all conversion paths restricted strictly to years before Wife turns 61."""

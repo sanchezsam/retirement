@@ -21,6 +21,9 @@ from reportlab.graphics.charts.legends import Legend
 import config
 
 def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, rotation_list, grand_total_taxes, grand_total_health, grand_total_base_inflow, grand_total_util_inflow, grand_total_brokerage, grand_total_roth, grand_total_401k):
+    y1_row = full_timeline_data[0] if full_timeline_data else {}
+    fed_quarter_voucher = y1_row.get("fed_tax", 0.0) / 4.0
+    nm_quarter_voucher = y1_row.get("nm_tax", 0.0) / 4.0
     """Orchestrates standalone, penny-accurate Excel and PDF compilation stamped by Strategy Rank."""
     print("[DEBUG] Independent report_generator engine triggered successfully.")
     
@@ -339,7 +342,7 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
     
     ledger_pdf_rows = [[
         Paragraph("#", table_hdr), Paragraph("Yr", table_hdr), Paragraph("Bracket", table_hdr), Paragraph("Brok Start", table_hdr), Paragraph("401k Start", table_hdr),
-        Paragraph("Roth Start", table_hdr), Paragraph("Living Exp", table_hdr), Paragraph("Est Taxes", table_hdr), Paragraph("Health Cost", table_hdr), 
+        Paragraph("Conversion", table_hdr), Paragraph("Living Exp", table_hdr), Paragraph("Est Taxes", table_hdr), Paragraph("Health Cost", table_hdr), 
         Paragraph("Inflow Base", table_hdr), Paragraph("Brok Yield", table_hdr), Paragraph("Req Income", table_hdr), Paragraph("From Inflow", table_hdr), 
         Paragraph("From Brok", table_hdr), Paragraph("From Roth", table_hdr), Paragraph("End Roth", table_hdr)
     ]]
@@ -379,7 +382,7 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         yr_short = str(y_row['year'])[-2:]
         ledger_pdf_rows.append([
             Paragraph(f"{y_idx + 1}", cell_bold), Paragraph(yr_short, cell_reg), Paragraph(pct_val, cell_reg), 
-            Paragraph(f"${y_row['start_brokerage']:,.0f}", cell_right), Paragraph(f"${y_row['start_trad']:,.0f}", cell_right), Paragraph(f"${y_row['start_roth']:,.0f}", cell_right), 
+            Paragraph(f"${y_row['start_brokerage']:,.0f}", cell_right), Paragraph(f"${y_row['start_trad']:,.0f}", cell_right), Paragraph(f"${y_row['actual_conversion']:,.0f}", cell_right), 
             Paragraph(f"${y_living:,.0f}", cell_right), Paragraph(f"${c_tax:,.0f}", cell_right), Paragraph(f"${y_row['healthcare_cost']:,.0f}", cell_right), 
             Paragraph(f"${y_row['pension_ss_rent']:,.0f}", cell_right), Paragraph(f"${y_brok_gains:,.0f}", cell_right), Paragraph(f"${y_req_income:,.0f}", cell_right), Paragraph(f"${y_from_inflow:,.0f}", cell_right), 
             Paragraph(f"${y_from_brokerage:,.0f}", cell_right), Paragraph(f"${y_from_roth:,.0f}", cell_right), Paragraph(f"${y_row['end_roth']:,.0f}", cell_right)
@@ -531,18 +534,26 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
             trad_chart_points.append(m_from_401k)
             roth_chart_points.append(m_from_roth)
 
-            if m_name == "Jan" and (y_row["fed_tax"] + y_row["nm_tax"]) > 0.01: m_text = "VOUCHER DUE: Pay IRS Quarter: $1,250.00 & NM: $400.00."
+            if m_name == "Jan" and (y_row["fed_tax"] + y_row["nm_tax"]) > 0.01: m_text = f"VOUCHER DUE: Pay IRS Quarter: {fed_quarter_voucher:,.2f} & NM: {nm_quarter_voucher:,.2f}."
             elif m_name == "Feb" and y_row["year"] == 1: m_text = "RETIREMENT START: Active employment ceased. Drawdown cascades initialized."
-            elif m_name in ["Apr", "Jun", "Sep"] and (y_row["fed_tax"] + y_row["nm_tax"]) > 0.01: m_text = "VOUCHER DUE: Pay IRS Quarter: $1,250.00 & NM: $400.00."
+            elif m_name in ["Apr", "Jun", "Sep"] and (y_row["fed_tax"] + y_row["nm_tax"]) > 0.01: m_text = f"VOUCHER DUE: Pay IRS Quarter: {fed_quarter_voucher:,.2f} & NM: {nm_quarter_voucher:,.2f}."
             elif m_name == "Dec":
                 pct_label = f"{rotation_list[y_idx]}%" if y_idx < len(rotation_list) else f"{getattr(config, 'DEFAULT_FALLBACK_BRACKET', 22)}%"
                 if y_row["end_trad"] <= 0.01: m_text = "Traditional balance depleted. Core conversions completed cleanly."
                 else: m_text = f"EXECUTE RUNWAY: Roll over conversions under the {pct_label} target bracket. True-Up year-end liability."
             else: m_text = "Standard monthly loop sequence satisfied."
             
-            y_lifestyle_draw = m_from_inflow + m_from_brokerage + m_from_roth + m_from_401k
-            if m_name in ["Jan", "Apr", "Jun", "Sep"]: y_lifestyle_draw = max(0.00, y_lifestyle_draw - 1650.00)
-            elif m_name == "Dec": y_lifestyle_draw = max(0.00, y_lifestyle_draw - (y_row["fed_tax"] + y_row["nm_tax"]))
+            # Calculate how many active retirement months exist in this specific year
+            active_months_count = sum(1 for m in y_row["monthly_ledger"] if m["from_brokerage"] > 0 or m["from_inflow"] > 0 or m["from_roth"] > 0 or m["from_401k"] > 0)
+            active_months_count = active_months_count if active_months_count > 0 else 12
+            
+            # If the month has retirement draw activity, show its clean equal share of living expenses
+            has_activity = (m_from_inflow > 0 or m_from_brokerage > 0 or m_from_roth > 0 or m_from_401k > 0)
+            y_lifestyle_draw = (y_row["living_expense"] / active_months_count) if has_activity else 0.0
+
+            # Line deactivated: if m_name in ["Jan", "Apr", "Jun", "Sep"]: y_lifestyle_draw = max(0.00, y_lifestyle_draw - 1650.00)
+            if m_name == "Dec": y_lifestyle_draw = max(0.00, y_lifestyle_draw - (y_row["fed_tax"] + y_row["nm_tax"]))
+
 
             y_health_draw = m_data.get("health_draw", m_data.get("healthcare", 0.00))
             if y_health_draw <= 0.01 and y_row["healthcare_cost"] > 0.01: y_health_draw = y_row["healthcare_cost"] / 12.0
