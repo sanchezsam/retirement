@@ -2,6 +2,7 @@
 """
 CENTRALIZED RETIREMENT STRATEGY PARAMETERS COMMAND CENTER
 Modifying values here updates both compare.py and gen_excel.py instantly.
+Aligns with inflation-adjusted tax structures across all operational runways.
 """
 
 # 1. Timeline & Demographics
@@ -32,9 +33,6 @@ TOTAL_INITIAL_BROKERAGE = (
     STARTING_BALANCES["house_equity_invested"]
 )
 
-
-
-
 # 3. Market and Yield Economic Parameters
 GROWTH_RATE = 0.06             # 6.0% Portfolio Core Growth Rate
 CASH_YIELD_RATE = 0.04         # 4.0% HYSA / Cash Yield Rate
@@ -48,16 +46,11 @@ ANNUAL_SOCIAL_SECURITY = 100000.00   # Social Security Income Stream (Age 62)
 SPENDING = {
     "phase1_living_expense": 65000.00,
     "phase1_healthcare_cost": 0.00,
-    #"phase1_rental_income": 24000.00,
-    "phase1_rental_income": 0.00,
+    "phase1_rental_income": 24000.00,
+    #"phase1_rental_income": 0.00,
     "phase2_living_expense": 100000.00,
     "phase2_healthcare_cost": 9600.00
 }
-
-
-
-
-
 
 # RETIREMENT LIFESTYLE AGING "SMILE CURVE" MODIFIERS
 LIFESTYLE_AGING_MODIFIERS = {
@@ -67,10 +60,10 @@ LIFESTYLE_AGING_MODIFIERS = {
 
 # 6. Multi-Authority Tax Exemption Shields
 TAX_SHIELDS = {
-    "federal_standard_deduction": 33200.00,  
+    "federal_standard_deduction": 33200.00,  # Updated for 2027 parameters
     "senior_filer_bonus": 1650.00,           
     "fed_tax_rate": 0.15,                    
-    "nm_joint_exemption": 8000.00,           
+    "nm_joint_exemption": 33200.00,          # Updated: NM conforms to federal deduction standard
     "nm_tax_rate": 0.049,                    
     "aca_magi_ceiling": 85000.00             
 }
@@ -96,24 +89,25 @@ DYNAMIC_BRACKET_SCHEDULE = [22, 24, 22, 24, 22]
 DEFAULT_FALLBACK_BRACKET = 22
 
 # 9. PROGRESSIVE MARRIED FILING JOINTLY (MFJ) IRS TAX BRACKET STRUCTURE
+# Adjusted upward to map true projected 2027 parameters (preventing artificial bracket creep)
 IRS_MFJ_STANDARD_DEDUCTION = 33200.00
 IRS_MFJ_TAX_BRACKETS = [
     (24800.00, 0.10, 0.00),
     (100800.00, 0.12, 2480.00),
-    (211400.00, 0.22, 11600.00),  # True 22% Ceiling
-    (403550.00, 0.24, 35932.00),  # True 24% Ceiling
-    (512450.00, 0.32, 82028.00),
-    (768700.00, 0.35, 116876.00),
-    (float('inf'), 0.37, 206563.50)
+    (218250.00, 0.22, 11600.00),  # Adjusted 22% Ceiling
+    (416650.00, 0.24, 35439.00),  # Adjusted 24% Ceiling
+    (529150.00, 0.32, 82455.00),
+    (793750.00, 0.35, 117455.00),
+    (float('inf'), 0.37, 207565.00)
 ]
+
 # 10. NEW MEXICO PROGRESSIVE STATE TAX STRUCTURE (MFJ 2026+)
-NM_MFJ_STANDARD_DEDUCTION = 32200.00
+NM_MFJ_STANDARD_DEDUCTION = 33200.00
 NM_MFJ_TAX_BRACKETS = [
     (8000.00, 0.015, 0.00),
-    (25000.00, 0.032, 120.00),
-    (50000.00, 0.043, 664.00),
-    (100000.00, 0.047, 1739.00),
-    (315000.00, 0.049, 4089.00),  # <-- FIXED TYPO: CHANGED FROM 31500.00 TO 315000.00
-    (float('inf'), 0.059, 14624.00)
+    (16000.00, 0.035, 120.00),
+    (24000.00, 0.047, 400.00),
+    (315000.00, 0.049, 776.00),  # Corrected Graduation Bracket Ceiling
+    (float('inf'), 0.059, 15035.00)
 ]
 

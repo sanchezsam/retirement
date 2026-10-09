@@ -19,6 +19,7 @@ Budget Lockout Engine: Initial brokerage capital is strictly locked to your conf
 Loophole Repair: Strictly audits tax liabilities drawn from the Roth pool against the 5-year clock calendar.
 Completely standalone and independent with zero cross-imports from other strategy optimization modules.
 """
+
 import os
 import sys
 import itertools
@@ -49,14 +50,37 @@ def calc_marginal_tax(taxable_income, deduction, brackets):
 
 def calculate_progressive_taxes(income):
     """Pulls bracket structures from config and evaluates combined marginal liabilities."""
-    fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
+    # Updated Federal MFJ parameters utilizing projected 2027 inflation-adjusted tiers
+    fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [
+        (25600.00, 0.10, 0.00),
+        (104050.00, 0.12, 2560.00),
+        (218250.00, 0.22, 11974.00),
+        (416650.00, 0.24, 37098.00),
+        (529100.00, 0.32, 84714.00),
+        (793650.00, 0.35, 120718.00),
+        (float('inf'), 0.37, 213310.50)
+    ])
     shields = getattr(config, "TAX_SHIELDS", {})
-    fed_deduction = shields.get("federal_standard_deduction", getattr(config, "IRS_MFJ_STANDARD_DEDUCTION", 33200.00))
+    
+    fed_deduction = shields.get(
+        "federal_standard_deduction", 
+        getattr(config, "IRS_MFJ_STANDARD_DEDUCTION", 33200.00)
+    )
     fed_tax = calc_marginal_tax(income, fed_deduction, fed_brackets)
 
-    nm_brackets = getattr(config, "NM_MFJ_TAX_BRACKETS", [])
-    nm_deduction = shields.get("nm_joint_exemption", getattr(config, "NM_MFJ_STANDARD_DEDUCTION", 32200.00))
+    nm_brackets = getattr(config, "NM_MFJ_TAX_BRACKETS", [
+        (8000.00, 0.015, 0.00),
+        (16000.00, 0.035, 120.00),
+        (24000.00, 0.047, 400.00),
+        (315000.00, 0.049, 776.00),
+        (float('inf'), 0.059, 15035.00)
+    ])
+    nm_deduction = shields.get(
+        "nm_joint_exemption", 
+        getattr(config, "NM_MFJ_STANDARD_DEDUCTION", 33200.00)
+    )
     nm_tax = calc_marginal_tax(income, nm_deduction, nm_brackets)
+    
     return fed_tax, nm_tax
 
 
@@ -93,6 +117,12 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
     phase1_duration = getattr(config, "PHASE_1_DURATION_YEARS", 7)
     spending_matrix = getattr(config, "SPENDING", {})
     aging_modifiers = getattr(config, "LIFESTYLE_AGING_MODIFIERS", {})
+    
+    shields = getattr(config, "TAX_SHIELDS", {})
+    fed_deduction = shields.get(
+        "federal_standard_deduction", 
+        getattr(config, "IRS_MFJ_STANDARD_DEDUCTION", 33200.00)
+    )
     
     start_year = 2027
     wife_start_age = getattr(config, "WIFE_START_AGE", 47)
@@ -201,12 +231,13 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
         # Determine Conversion Target
         conversion_target = 0.00
         if active_bracket > 0:
+            # Shifted upper limits to map true 2027 parameters dynamically
             if active_bracket == 22:
-                conversion_target = 244600.00  
+                conversion_target = 218250.00 + (fed_deduction if year_idx == 0 else fed_deduction * inflation_multiplier)
             elif active_bracket == 24:
-                conversion_target = 436750.00  
+                conversion_target = 416650.00 + (fed_deduction if year_idx == 0 else fed_deduction * inflation_multiplier)
             else:
-                conversion_target = 545650.00
+                conversion_target = 529100.00 + (fed_deduction if year_idx == 0 else fed_deduction * inflation_multiplier)
             
             # Headroom calculations clear smoothly with zeroed brokerage interest gains
             conversion_target = max(0.00, conversion_target - from_401k - brokerage_gains)
@@ -506,7 +537,14 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule, custom_b
 
         base_suitability_score = estate_score + liq_score + clock_score + tax_efficiency_score
         final_suitability_score = base_suitability_score
-        if len(set([b for br in executed_brackets if (b := br) > 0])) <= 1:
+        
+        unique_active_brackets = set()
+        for br in executed_brackets:
+            if br > 0:
+                unique_active_brackets.add(br)
+        is_pure_flat_track = len(unique_active_brackets) <= 1
+        
+        if is_pure_flat_track:
             final_suitability_score += 15.0
         final_suitability_score = min(100.0, final_suitability_score)
             
@@ -698,7 +736,6 @@ if __name__ == "__main__":
             export_input = input(f"\nWould you like to generate full custom Excel/PDF files for Rank {target_rank}? (y/n): ").strip().lower()
             if export_input == 'y':
                 try:
-                    import importlib.util
                     report_gen_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "report_generator.py")
                     spec = importlib.util.spec_from_file_location("report_generator", report_gen_path)
                     report_generator = importlib.util.module_from_spec(spec)
