@@ -207,17 +207,34 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
 
         conversion_target = 0.00
         if active_bracket > 0:
-            if active_bracket == 22:
-                conversion_target = 211400.00 + (fed_deduction if year_idx == 0 else fed_deduction * inflation_multiplier)
-            elif active_bracket == 24:
-                conversion_target = 403550.00 + (fed_deduction if year_idx == 0 else fed_deduction * inflation_multiplier)
-            else:
-                conversion_target = 512450.00 + (fed_deduction if year_idx == 0 else fed_deduction * inflation_multiplier)
+            # 1. Fetch brackets from config and translate choice (e.g. 10 -> 0.10)
+            fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
+            target_rate = float(active_bracket) / 100.0
             
+            # 2. Extract the matching ceiling from config.py
+            base_ceiling = 0.00
+            bracket_found = False
+            for ceiling, rate, _ in fed_brackets:
+                if abs(rate - target_rate) < 0.001:
+                    base_ceiling = ceiling
+                    bracket_found = True
+                    break
+            
+            # 3. Safe fallback if choice doesn't match config entries
+            if not bracket_found:
+                base_ceiling = getattr(config, "DEFAULT_FALLBACK_BRACKET", 22)
+            
+            # 4. Apply inflation-adjusted structural deductions
+            deduction_factor = fed_deduction if year_idx == 0 else fed_deduction * inflation_multiplier
+            conversion_target = base_ceiling + deduction_factor
+            
+            # 5. Account for standard income offsets
             conversion_target = max(0.00, conversion_target - from_401k - brokerage_gains)
+            
+            # 6. Apply your maximum burn-down catch-up rule as age 61 arrives
             if (61 - wife_age) <= 1:
                 conversion_target = traditional_401k
-
+            
         actual_conversion = min(traditional_401k, conversion_target)
         traditional_401k -= actual_conversion
         roth_pool += actual_conversion
@@ -322,23 +339,26 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
 
 
 def generate_all_balance_driven_combinations():
-    """Generates all conversion paths restricted strictly to years before Wife turns 61."""
+    """Generates all conversion paths restricted strictly to years before Wife turns 61 using Cartesian products."""
     bracket_options = getattr(config, "AVAILABLE_BRACKET_CHOICES", [0, 22, 24])
     unique_executed_keys = set()
     absolute_results_pool = []
-    
-    target_runway_horizon = max(1, 61 - getattr(config, "WIFE_START_AGE", 47)) 
-    print(f"[INFO] Dynamically walking combination tree paths for a fixed {target_runway_horizon}-Year Runway...")
-    
-    raw_permutations = list(itertools.combinations_with_replacement(bracket_options, target_runway_horizon))
             
+    target_runway_horizon = max(1, 61 - getattr(config, "WIFE_START_AGE", 47)) 
+
+    #target_runway_horizon = 5
+    print(f"[INFO] Dynamically walking Cartesian product tree paths for a fixed {target_runway_horizon}-Year Runway...")
+                    
+    # Use itertools.product to allow multi-directional sequences (e.g., 22% down to 12%)
+    raw_permutations = list(itertools.product(bracket_options, repeat=target_runway_horizon))
+                    
     for permutation in raw_permutations:
         rotation_list = list(permutation)
-        
+                    
         simulation_data = run_financial_simulation(rotation_list)
         if not simulation_data:
-            continue
-            
+            continue    
+                    
         years_to_clear = 0
         for year_row in simulation_data:
             if year_row.get("start_trad", 0.00) > 500.00:
@@ -351,17 +371,18 @@ def generate_all_balance_driven_combinations():
             continue
         unique_executed_keys.add(seq_key)
         
+        # Append valid results to the pool
         absolute_results_pool.append({
             "rotation": full_executed_pattern,
             "years_to_convert": years_to_clear if years_to_clear > 0 else 1,
             "simulation_data": simulation_data
         })
-            
+        
     return absolute_results_pool, getattr(config, "DYNAMIC_BRACKET_SCHEDULE", [])
 
 
 def score_unrestricted_matrix(absolute_results_pool, original_schedule):
-    """Disqualifies strategies with ordinary 401k draws or IRS penalties. Ranks by Ending Estate."""
+    """Disqualifies strategies with ordinary 401k draws or IRS penalties. Ranks by Weighted Config Parameters."""
     optimization_scoreboard = []
     if not absolute_results_pool:
         return optimization_scoreboard
@@ -369,6 +390,10 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
     seen_execution_patterns = set()
     max_estate_found = 0.0
     
+    # Track the absolute limit configuration for single-year tax spikes from config.py
+    tax_ceiling_limit = getattr(config, "MAX_ALLOWED_SINGLE_YEAR_TAX", 150000.00)
+    
+               
     for item in absolute_results_pool:
         sim_data = item["simulation_data"]
         violates_rules = False
@@ -378,9 +403,7 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
                 if m_data.get("from_401k", 0.00) > 0.01 or m_data.get("is_irs_violation", False):
                     violates_rules = True
                     break
-            if violates_rules:
-                break
-                
+
         if sim_data[-1].get("end_trad", 0.00) <= 500.00 and not violates_rules:
             ending_estate = sim_data[-1].get("end_brokerage", 0.00) + sim_data[-1].get("end_trad", 0.00) + sim_data[-1].get("end_roth", 0.00)
             if ending_estate > max_estate_found:
@@ -411,22 +434,31 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
         if is_illegal_strategy:
             continue
             
-        executed_brackets = []
-        for y_idx, y_row in enumerate(simulation_data):
-            if y_idx < len(clean_sequence):
-                if y_row.get("start_trad", 0.00) <= 500.00:
-                    executed_brackets.append(0)
-                else:
-                    executed_brackets.append(clean_sequence[y_idx])
-        
-        while len(executed_brackets) > 1 and executed_brackets[-1] == 0:
-            executed_brackets.pop()
-            
-        seq_key = str(executed_brackets)
+        # CRITICAL FIX: Determine uniqueness using the raw optimized tree sequence 
+        # to prevent identical trailing fallback brackets from triggering false duplication skips.
+        seq_key = str(clean_sequence)
         if seq_key in seen_execution_patterns:
             continue
         seen_execution_patterns.add(seq_key)
 
+        # Now, cleanly build the full 14-year display array for the scoreboard table
+        executed_brackets = []
+        true_runway_length = max(1, 61 - getattr(config, "WIFE_START_AGE", 47))
+        
+        
+        for y_idx, y_row in enumerate(simulation_data):
+            if y_idx < true_runway_length:
+                if y_row.get("start_trad", 0.00) <= 500.00:
+                    executed_brackets.append(0)
+                elif y_idx < len(clean_sequence):
+                    executed_brackets.append(clean_sequence[y_idx])
+                else:
+                    executed_brackets.append(getattr(config, "DEFAULT_FALLBACK_BRACKET", 22))
+
+        while len(executed_brackets) > 1 and executed_brackets[-1] == 0:
+            executed_brackets.pop()
+
+        # Enforce your standard real-world liquidity risk check
         is_brokerage_broken = any(
             year_row.get("end_brokerage", 1.0) <= 0.00 and year_row.get("wife_age", 47) < 61
             for year_row in simulation_data
@@ -441,12 +473,37 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
             final_year_record.get("end_roth", 0.00)
         )
         
-        estate_score = (ending_total_estate / max_estate_found) * 25.0 if max_estate_found > 0 else 0.0
-        liq_score = 25.0 if not is_brokerage_broken else 12.5
-        clock_score = 25.0  
-        tax_efficiency_score = max(0.0, 25.0 - (total_lifetime_taxes / 50000.0))
+        # Extract individual percentage priority sliders from config.py with safe fallbacks
+        weights_dict = getattr(config, "OPTIMIZATION_WEIGHTS", {})
+        w_estate = weights_dict.get("estate_value", 30.0)
+        w_liquidity = weights_dict.get("liquidity_buffer", 20.0)
+        w_clock = weights_dict.get("clock_safety", 20.0)
+        w_tax_drag = weights_dict.get("lifetime_tax_drag", 15.0)
+        w_volatility = weights_dict.get("tax_volatility", 15.0)
 
-        base_suitability_score = estate_score + liq_score + clock_score + tax_efficiency_score
+        # 1. Scale Estate Component Score dynamically
+        estate_score = (ending_total_estate / max_estate_found) * w_estate if max_estate_found > 0 else 0.0
+        
+        # 2. Scale Liquidity Buffer Component Score dynamically
+        liq_score = w_liquidity if not is_brokerage_broken else (w_liquidity * 0.5)
+        
+        # 3. Scale Clock Safety Component Score dynamically
+        clock_score = w_clock  # Perfect score unless strict compliance rules fail
+
+        # 4. Scale Lifetime Tax Efficiency Component Score dynamically
+        tax_efficiency_score = max(0.0, w_tax_drag - (total_lifetime_taxes / 50000.0))
+
+        # 5. Integrate Volatility Component Score (Penalize single-year tax bombs)
+        max_single_year_tax = max(y_row.get("total_taxes", 0.00) for y_row in simulation_data)
+        tax_ceiling_limit = getattr(config, "MAX_ALLOWED_SINGLE_YEAR_TAX", 150000.00)
+        
+        if max_single_year_tax > tax_ceiling_limit:
+            volatility_score = 0.0
+        else:
+            volatility_score = max(0.0, w_volatility * (1.0 - (max_single_year_tax / tax_ceiling_limit)))
+
+        # Compile aggregate weighted baseline
+        base_suitability_score = estate_score + liq_score + clock_score + tax_efficiency_score + volatility_score
         final_suitability_score = base_suitability_score
         
         unique_active_brackets = set()
@@ -455,10 +512,22 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
                 unique_active_brackets.add(br)
         is_pure_flat_track = len(unique_active_brackets) <= 1
         
-        if is_pure_flat_track:
-            final_suitability_score += 15.0
-            
-        final_suitability_score = min(100.0, final_suitability_score)
+        # Substitute a minor operational switch penalty to discourage erratic annual bracket bouncing
+        bracket_switches = 0
+        for i in range(len(executed_brackets) - 1):
+            if executed_brackets[i] != executed_brackets[i+1]:
+                bracket_switches += 1
+
+        # Penalize a microscopic fraction (e.g., 0.25 pts per switch) for choppy, fluctuating paths
+        operational_friction = bracket_switches * 0.25
+        final_suitability_score = base_suitability_score - operational_friction
+
+        # Clamp to standard max 100 limit profile
+        final_suitability_score = max(0.0, min(100.0, final_suitability_score))
+
+        # Clamp to standard max 100 limit profile
+        final_suitability_score = max(0.0, min(100.0, final_suitability_score))
+
             
         optimization_scoreboard.append({
             "rotation_sequence": executed_brackets, 

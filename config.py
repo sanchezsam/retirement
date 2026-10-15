@@ -13,14 +13,18 @@ HUSBAND_START_AGE = 46
 # Options: "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
 RETIREMENT_START_MONTH = "Feb"
 
-AVAILABLE_BRACKET_CHOICES = [0, 22, 24]
+MAX_ALLOWED_SINGLE_YEAR_TAX = 200000.00
+
+
+#AVAILABLE_BRACKET_CHOICES = [0, 10, 12, 22, 24]
+AVAILABLE_BRACKET_CHOICES = [12, 22, 24]
 PHASE_1_DURATION_YEARS = 7  # Specify exactly how long Phase 1 (Low Income/Holiday) runs
 
 # 2. Starting Asset Balances
 STARTING_BALANCES = {
     "brokerage_1": 71313.29,
     "brokerage_2": 15673.00,
-    "house_sale_proceeds": 350000.00,  # Re-injects your $300k sales proceed shield
+    "house_sale_proceeds": 400000.00,  # Re-injects your $300k sales proceed shield
     "house_equity_invested": 0.00,
     "trad_401k": 1476432.85,
     "roth_pool": 130967.93             # CRITICAL: Grandfathered baseline pool
@@ -86,7 +90,7 @@ SCENARIOS = {
 
 # 8. CHRONOLOGICAL TAX BRACKET TARGET MAP
 DYNAMIC_BRACKET_SCHEDULE = [22, 24, 22, 24, 22] 
-DEFAULT_FALLBACK_BRACKET = 22
+DEFAULT_FALLBACK_BRACKET = 12
 
 # 9. PROGRESSIVE MARRIED FILING JOINTLY (MFJ) IRS TAX BRACKET STRUCTURE
 # Adjusted upward to map true projected 2027 parameters (preventing artificial bracket creep)
@@ -111,3 +115,11 @@ NM_MFJ_TAX_BRACKETS = [
     (float('inf'), 0.059, 15035.00)
 ]
 
+
+OPTIMIZATION_WEIGHTS = {
+    "estate_value": 30.0,       # Reward for maximizing total terminal wealth
+    "liquidity_buffer": 20.0,   # Penalty for completely draining your brokerage cash early
+    "clock_safety": 20.0,       # Strict rule penalty for IRS 5-Year clock violations
+    "lifetime_tax_drag": 15.0,  # Penalty based on total aggregate taxes paid
+    "tax_volatility": 15.0      # Heavy penalty multiplier for single-year tax spikes / tax bombs
+}
