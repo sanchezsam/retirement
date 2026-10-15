@@ -23,6 +23,109 @@ except ImportError:
     sys.exit(1)
 
 
+def print_dual_pool_ledger(selected_record, rotation_list):
+    """
+    Isolates and prints a clean, side-by-side annual summary tracking 
+    Starting Balances, Growth Gained, Outflow Draws, and Ending Balances 
+    for both the Taxable Brokerage and Tax-Free Roth Pools. Includes annual conversions.
+    """
+    sim_data = selected_record["simulation_data"]
+    pattern_str = " -> ".join(f"{br}%" for br in rotation_list)
+    
+    print("\n" + "="*180)
+    print(f" ANNUAL BALANCE & FLOW TRACKER MATRIX | STRATEGY: {pattern_str}")
+    print("="*180)
+    print(f"     | {'--- TAXABLE BROKERAGE ASSET MATRIX ---':^54} | {'----- TAX-FREE ROTH POOL ASSET MATRIX -----':^67} |")
+    print(f"W_Age| {'Start Bal':<12} | {'Yield/Gain':<11} | {'Total Draw':<11} | {'End Bal':<11} | {'Start Bal':<12} | {'Amt Convert':<11} | {'Growth/Gain':<11} | {'Total Draw':<11} | {'End Bal':<11} |")
+    print("-"*180)
+    
+    for y_idx, y_row in enumerate(sim_data):
+        w_age = y_row.get("wife_age", 47 + y_idx)
+        
+        # 1. Parse Brokerage Flows Natively
+        sb_brok = y_row.get("start_brokerage", 0.00)
+        yield_brok = y_row.get("brokerage_gains", 0.00)
+        eb_brok = y_row.get("end_brokerage", 0.00)
+        draw_brok = sum(m.get("from_brokerage", 0.00) for m in y_row.get("monthly_ledger", []))
+        
+        # 2. Parse Roth Flows and Conversion Injections Natively
+        sb_roth = y_row.get("start_roth", 0.00)
+        eb_roth = y_row.get("end_roth", 0.00)
+        actual_conversion = y_row.get("actual_conversion", 0.00)
+        draw_roth = sum(m.get("from_roth", 0.00) for m in y_row.get("monthly_ledger", []))
+        
+        # Isolate Roth internal compounding growth separate from your rollover injections
+        yield_roth = max(0.00, eb_roth + draw_roth - sb_roth - actual_conversion)
+        
+        # Format Currency Blocks for Perfect Grid Alignment
+        print(f" {w_age:<3} | "
+              f"${sb_brok:<11,.2f} | "
+              f"${yield_brok:<10,.2f} | "
+              f"${draw_brok:<10,.2f} | "
+              f"${eb_brok:<10,.2f} | "
+              f"${sb_roth:<11,.2f} | "
+              f"${actual_conversion:<10,.2f} | "
+              f"${yield_roth:<10,.2f} | "
+              f"${draw_roth:<10,.2f} | "
+              f"${eb_roth:<10,.2f} |")
+              
+    print("="*180)
+
+
+def calculate_empirical_betr(strategy_net_estate, bracket_schedule, custom_brokerage=None, custom_rent=None, custom_living=None):
+    """
+    Calculates the true empirical Break-Even Tax Rate (BETR).
+    Isolates the tax rate threshold below which pre-tax preservation beats conversions.
+    """
+    # 1. Simulate the Zero-Conversion baseline control case
+    zero_bracket_schedule = [0] * len(bracket_schedule)
+    control_timeline = run_financial_simulation(
+        zero_bracket_schedule, 
+        custom_brokerage=custom_brokerage, 
+        custom_rent=custom_rent, 
+        custom_living=custom_living
+    )
+    
+    if not control_timeline:
+        return 0.00
+        
+    control_final = control_timeline[-1]
+    control_net_estate = (
+        control_final.get("end_brokerage", 0.00) +
+        control_final.get("end_trad", 0.00) +
+        control_final.get("end_roth", 0.00)
+    )
+    
+    # 2. Get total conversion volume executed
+    active_timeline = run_financial_simulation(
+        bracket_schedule, 
+        custom_brokerage=custom_brokerage, 
+        custom_rent=custom_rent, 
+        custom_living=custom_living
+    )
+    total_converted = sum(y.get("actual_conversion", 0.00) for y in active_timeline)
+    
+    if total_converted <= 0 or strategy_net_estate <= control_net_estate:
+        return 0.00
+        
+    # 3. Calculate Strategy Tax Savings Drag Delta
+    strategy_lifetime_taxes = sum(y.get("total_taxes", 0.00) for y in active_timeline)
+    control_lifetime_taxes = sum(y.get("total_taxes", 0.00) for y in control_timeline)
+    tax_saved_delta = max(0.00, control_lifetime_taxes - strategy_lifetime_taxes)
+    
+    # 4. Hurdle rate is the implicit tax rate avoided on the converted core
+    # This reflects the true tax-bracket boundary benefit
+    implied_hurdle = (tax_saved_delta / total_converted) * 100.0
+    
+    # Clean fallback check: if wealth gain outcompounds tax savings alone, 
+    # normalize against the marginal tax bracket ceiling choice
+    if implied_hurdle == 0.0 or implied_hurdle > 35.0:
+        max_active_bracket = max(bracket_schedule) if bracket_schedule else 22
+        return round(float(max_active_bracket), 2)
+        
+    return round(max(0.00, min(40.0, implied_hurdle)), 2)
+
+
 def calc_marginal_tax(taxable_income, deduction, brackets):
     """
     Core mathematical engine for standard marginal tax brackets.
@@ -81,6 +184,7 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
     depletions, progressive tax drag, and chronological Roth contribution seasoning.
     """
     timeline_data = []
+    base_ceiling =0.00
     
     starting_balances = getattr(config, "STARTING_BALANCES", {})
     traditional_401k = starting_balances.get("trad_401k", 1476432.85)
@@ -224,17 +328,23 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
             if not bracket_found:
                 base_ceiling = getattr(config, "DEFAULT_FALLBACK_BRACKET", 22)
             
-            # 4. Apply inflation-adjusted structural deductions
-            deduction_factor = fed_deduction if year_idx == 0 else fed_deduction * inflation_multiplier
-            conversion_target = base_ceiling + deduction_factor
-            
-            # 5. Account for standard income offsets
-            conversion_target = max(0.00, conversion_target - from_401k - brokerage_gains)
-            
-            # 6. Apply your maximum burn-down catch-up rule as age 61 arrives
-            if (61 - wife_age) <= 1:
-                conversion_target = traditional_401k
-            
+           
+        # 4. Apply inflation-adjusted structural deductions
+        deduction_factor = fed_deduction if year_idx == 0 else fed_deduction * inflation_multiplier
+        
+        # Gross Income Ceiling = Net Taxable Bracket Top + Standard Deduction
+        gross_bracket_ceiling = base_ceiling + deduction_factor
+
+        # 5. Account for standard income offsets
+        # BOTH 'from_401k' and 'brokerage_gains' are taxable ordinary income streams 
+        # that consume your available bracket headroom. 
+        conversion_target = max(0.00, gross_bracket_ceiling - from_401k - brokerage_gains)
+
+        # 6. Apply your maximum burn-down catch-up rule as age 61 arrives
+        if (61 - wife_age) <= 1:
+            conversion_target = traditional_401k
+
+
         actual_conversion = min(traditional_401k, conversion_target)
         traditional_401k -= actual_conversion
         roth_pool += actual_conversion
@@ -346,7 +456,7 @@ def generate_all_balance_driven_combinations():
             
     target_runway_horizon = max(1, 61 - getattr(config, "WIFE_START_AGE", 47)) 
 
-    #target_runway_horizon = 5
+    target_runway_horizon = 5
     print(f"[INFO] Dynamically walking Cartesian product tree paths for a fixed {target_runway_horizon}-Year Runway...")
                     
     # Use itertools.product to allow multi-directional sequences (e.g., 22% down to 12%)
@@ -529,11 +639,13 @@ def score_unrestricted_matrix(absolute_results_pool, original_schedule):
         final_suitability_score = max(0.0, min(100.0, final_suitability_score))
 
             
+        empirical_betr = calculate_empirical_betr(ending_total_estate, clean_sequence)
         optimization_scoreboard.append({
             "rotation_sequence": executed_brackets, 
             "years_to_convert": actual_clear_year, 
             "lifetime_taxes_paid": total_lifetime_taxes,
             "net_total_estate": ending_total_estate, 
+            "empirical_betr": empirical_betr,
             "risk_profile": risk_sig, 
             "liq_buffer": liq_score,
             "clock_safety": clock_score, 
@@ -570,17 +682,23 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
     print(f"FINAL RETIREMENT SUITABILITY INDEX                 | {'95.0 / 100':<15} | {'92.8 / 100':<15} | {'89.6 / 100':<15}")
     print("="*150)
 
-    print("\n" + "="*195)
+    # Scaled from 195 to 210 to absorb the 13-character BETR column allocation cleanly
+    print("\n" + "="*210)
     print("             RANKED RETIREMENT MATRIX SCOREBOARD: COMPREHENSIVE STRATEGY VARIATIONS")
-    print("="*195)
-    print(f"{'Rank':<5} | {'Bracket Rotation Sequence Pattern':<78} | {'Clear':<7} | {'Est Taxes':<14} | {'End Estate':<15} | {'Liq Buffer':<11} | {'IRS Clock':<10} | {'Roth Split':<11} | {'Legis Risk':<12} | {'FINAL SCORE':<12}")
-    print("-"*195)
+    print("="*210)
+    print(f"{'Rank':<5} | {'Bracket Rotation Sequence Pattern':<78} | {'Clear':<7} | {'Est Taxes':<14} | {'End Estate':<15} | {'BETR Hurdle':<11} | {'Liq Buffer':<11} | {'IRS Clock':<10} | {'Roth Split':<11} | {'Legis Risk':<12} | {'FINAL SCORE':<12}")
+    print("-"*210)
     
     for rank_idx, record in enumerate(scoreboard_data[:30], start=1):
         sequence_str = format_carryover_sequence(record["rotation_sequence"], field_width=78)
         years_str = f"{record['years_to_convert']} Yrs"
         tax_str = f"${record['lifetime_taxes_paid']:,.2f}"
         estate_str = f"${record['net_total_estate']:,.2f}"
+        
+        # Pull the new back-calculated metric with a fallback if dict entry is missing
+        betr_val = record.get("empirical_betr", 0.00)
+        betr_str = f"{betr_val:.2f}%"
+        
         liq_str = f"{record['liq_buffer']:.1f}"
         clock_str = f"{record['clock_safety']:.1f}"
         roth_str = f"{record['roth_split']:.1f}"
@@ -588,12 +706,15 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
         score_str = f"{record['suitability_score']:.1f} / 100"
         
         base_lines = sequence_str.split('\n')
-        print(f"{rank_idx:<5} | {base_lines[0]:<78} | {years_str:<7} | {tax_str:<14} | {estate_str:<15} | {liq_str:<11} | {clock_str:<10} | {roth_str:<11} | {legis_str:<12} | {score_str:<12}")
+        # Main row print incorporating betr_str right before liquidity trackers
+        print(f"{rank_idx:<5} | {base_lines[0]:<78} | {years_str:<7} | {tax_str:<14} | {estate_str:<15} | {betr_str:<11} | {liq_str:<11} | {clock_str:<10} | {roth_str:<11} | {legis_str:<12} | {score_str:<12}")
+        
+        # Wrapped multi-line carryover loop for long paths
         for extra_line in base_lines[1:]:
-            print(f"{'':<5} | {extra_line:<78} | {'':<7} | {'':<14} | {'':<15} | {'':<11} | {'':<10} | {'':<11} | {'':<12} | {'':<12}")
+            print(f"{'':<5} | {extra_line:<78} | {'':<7} | {'':<14} | {'':<15} | {'':<11} | {'':<11} | {'':<10} | {'':<11} | {'':<12} | {'':<12}")
             
-    print("="*195)
-    
+    print("="*210)
+ 
     while True:
         if len(scoreboard_data) == 0:
             break
@@ -603,22 +724,16 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
             break
             
         try:
+
+
             target_rank = int(user_input)
-            if target_rank < 1 or target_rank > len(scoreboard_data): 
+            if target_rank < 1 or target_rank > len(scoreboard_data):
                 continue
                 
             selected_record = scoreboard_data[target_rank - 1]
             rotation_list = selected_record["rotation_sequence"]
+           
             full_timeline_data = run_financial_simulation(rotation_list)
-            
-            pattern_display_str = " -> ".join(f"{br}%" for br in rotation_list)
-            
-            print("\n" + "="*286)
-            print(f" YEAR-BY-YEAR DETAIL DRAWDOWN LEDGER FOR RANK {target_rank} Pattern: {pattern_display_str} (Full 30-Year Projections)")
-            print("="*286)
-            print(f"{'#':<3} | {'Yr':<4} | {'Bracket':<7} | {'Brok Start':<14} | {'401k Start':<14} | {'Converted':<14} | {'Roth Start':<14} | {'Living Exp':<14} | {'Est Taxes':<12} | {'Health Cost':<12} | {'Inflow Base':<13} | {'Brok Yield':<12} | {'Req Income':<14} | {'From Broker':<13} | {'From Roth':<13} | {'From 401k':<13} | {'End Roth':<14}")
-            print("-"*286)
-            
             grand_totals = {
                 "taxes": 0.0, "health": 0.0, "base_inflow": 0.0, "taxable_income": 0.0,
                 "brokerage": 0.0, "roth": 0.0, "401k": 0.0, "conversions": 0.0,
@@ -626,57 +741,86 @@ def print_complete_unrestricted_scoreboard(scoreboard_data):
             }
             
             for y_idx, y_row in enumerate(full_timeline_data):
-                combined_taxes = y_row.get("total_taxes", 0.00)
-                
-                if y_row.get("start_trad", 1.0) <= 500.00:
-                    active_b_pct = "0%"
-                elif y_idx < len(rotation_list):
-                    active_b_pct = f"{rotation_list[y_idx]}%"
-                else:
-                    active_b_pct = f"{getattr(config, 'DEFAULT_FALLBACK_BRACKET', 22)}%"
-                    
-                y_from_brokerage = sum(m.get("from_brokerage", 0.00) for m in y_row.get("monthly_ledger", []))
-                y_from_roth = sum(m.get("from_roth", 0.00) for m in y_row.get("monthly_ledger", []))
-                y_from_401k = sum(m.get("from_401k", 0.00) for m in y_row.get("monthly_ledger", []))
-                
-                actual_annual_conversion = y_row.get("actual_conversion", 0.00)
-                y_total_taxable_income = y_row.get("true_taxable_income", actual_annual_conversion + y_from_401k)
-                y_req_income = y_row.get("required_income", 0.00)
-                y_brok_gains = y_row.get("brokerage_gains", 0.00)
-                
-                grand_totals["taxes"] += combined_taxes
+                grand_totals["taxes"] += y_row.get("total_taxes", 0.00)
                 grand_totals["health"] += y_row.get("healthcare_cost", 0.00)
-                grand_totals["base_inflow"] += y_row.get("pension_ss_rent", 0.00)
-                grand_totals["brokerage"] += y_from_brokerage
-                grand_totals["roth"] += y_from_roth
-                grand_totals["401k"] += y_from_401k
-                grand_totals["conversions"] += actual_annual_conversion
-                grand_totals["taxable_income"] += y_total_taxable_income
-                grand_totals["living_exp"] += y_row.get("living_expense", 0.00)
-                grand_totals["required_income"] += y_req_income
-                grand_totals["brok_gains"] += y_brok_gains
+
+            print("\n[1] View Full Chronological Transaction Ledger")
+            print("[2] View Side-by-Side Brokerage vs. Roth Annual Balance Matrix")
+            view_choice = input("Select viewing matrix detail style (1 or 2): ").strip()
+            
+            if view_choice == "2":
+                print_dual_pool_ledger(selected_record, rotation_list)
+            else:
+                selected_record = scoreboard_data[target_rank - 1]
+                rotation_list = selected_record["rotation_sequence"]
+                full_timeline_data = run_financial_simulation(rotation_list)
                 
-                sb = f"${y_row.get('start_brokerage', 0.00):,.2f}"
-                st = f"${y_row.get('start_trad', 0.00):,.2f}"
-                sc = f"${actual_annual_conversion:,.2f}" 
-                sr = f"${y_row.get('start_roth', 0.00):,.2f}"
-                le = f"${y_row.get('living_expense', 0.00):,.2f}"
-                ct = f"${combined_taxes:,.2f}"
-                hc = f"${y_row.get('healthcare_cost', 0.00):,.2f}"
-                inf = f"${y_row.get('pension_ss_rent', 0.00):,.2f}"
-                bg = f"${y_brok_gains:,.2f}"
-                ri = f"${y_req_income:,.2f}"
-                fb = f"${y_from_brokerage:,.2f}"
-                fr = f"${y_from_roth:,.2f}"
-                f4 = f"${y_from_401k:,.2f}"
-                er = f"${y_row.get('end_roth', 0.00):,.2f}"
+                pattern_display_str = " -> ".join(f"{br}%" for br in rotation_list)
                 
-                yr_short = str(y_row.get('year', 2027))[-2:]
-                print(f"{y_idx + 1:<3} | {yr_short:<4} | {active_b_pct:<7} | {sb:<14} | {st:<14} | {sc:<14} | {sr:<14} | {le:<14} | {ct:<12} | {hc:<12} | {inf:<13} | {bg:<12} | {ri:<14} | {fb:<13} | {fr:<13} | {f4:<13} | {er:<14}")
-                      
-            print("-"*286)
-            print(f"{'TOTALS':<10} | {'-':<7} | {'-':<14} | {'-':<14} | ${grand_totals['conversions']:<12,.2f} | {'-':<14} | ${grand_totals['living_exp']:<12,.2f} | ${grand_totals['taxes']:<11,.2f} | ${grand_totals['health']:<11,.2f} | ${grand_totals['base_inflow']:<12,.2f} | ${grand_totals['brok_gains']:<11,.2f} | ${grand_totals['required_income']:<13,.2f} | ${grand_totals['brokerage']:<12,.2f} | ${grand_totals['roth']:<12,.2f} | ${grand_totals['401k']:<12,.2f} | {'-':<14}")
-            print("="*286)
+                print("\n" + "="*286)
+                print(f" YEAR-BY-YEAR DETAIL DRAWDOWN LEDGER FOR RANK {target_rank} Pattern: {pattern_display_str} (Full 30-Year Projections)")
+                print("="*286)
+                print(f"{'#':<3} | {'Yr':<4} | {'Bracket':<7} | {'Brok Start':<14} | {'401k Start':<14} | {'Converted':<14} | {'Roth Start':<14} | {'Living Exp':<14} | {'Est Taxes':<12} | {'Health Cost':<12} | {'Inflow Base':<13} | {'Brok Yield':<12} | {'Req Income':<14} | {'From Broker':<13} | {'From Roth':<13} | {'From 401k':<13} | {'End Roth':<14}")
+                print("-"*286)
+                
+                grand_totals = {
+                    "taxes": 0.0, "health": 0.0, "base_inflow": 0.0, "taxable_income": 0.0,
+                    "brokerage": 0.0, "roth": 0.0, "401k": 0.0, "conversions": 0.0,
+                    "living_exp": 0.0, "required_income": 0.0, "brok_gains": 0.0
+                }
+                
+                for y_idx, y_row in enumerate(full_timeline_data):
+                    combined_taxes = y_row.get("total_taxes", 0.00)
+                    
+                    if y_row.get("start_trad", 1.0) <= 500.00:
+                        active_b_pct = "0%"
+                    elif y_idx < len(rotation_list):
+                        active_b_pct = f"{rotation_list[y_idx]}%"
+                    else:
+                        active_b_pct = f"{getattr(config, 'DEFAULT_FALLBACK_BRACKET', 22)}%"
+                        
+                    y_from_brokerage = sum(m.get("from_brokerage", 0.00) for m in y_row.get("monthly_ledger", []))
+                    y_from_roth = sum(m.get("from_roth", 0.00) for m in y_row.get("monthly_ledger", []))
+                    y_from_401k = sum(m.get("from_401k", 0.00) for m in y_row.get("monthly_ledger", []))
+                    
+                    actual_annual_conversion = y_row.get("actual_conversion", 0.00)
+                    y_total_taxable_income = y_row.get("true_taxable_income", actual_annual_conversion + y_from_401k)
+                    y_req_income = y_row.get("required_income", 0.00)
+                    y_brok_gains = y_row.get("brokerage_gains", 0.00)
+                    
+                    grand_totals["taxes"] += combined_taxes
+                    grand_totals["health"] += y_row.get("healthcare_cost", 0.00)
+                    grand_totals["base_inflow"] += y_row.get("pension_ss_rent", 0.00)
+                    grand_totals["brokerage"] += y_from_brokerage
+                    grand_totals["roth"] += y_from_roth
+                    grand_totals["401k"] += y_from_401k
+                    grand_totals["conversions"] += actual_annual_conversion
+                    grand_totals["taxable_income"] += y_total_taxable_income
+                    grand_totals["living_exp"] += y_row.get("living_expense", 0.00)
+                    grand_totals["required_income"] += y_req_income
+                    grand_totals["brok_gains"] += y_brok_gains
+                    
+                    sb = f"${y_row.get('start_brokerage', 0.00):,.2f}"
+                    st = f"${y_row.get('start_trad', 0.00):,.2f}"
+                    sc = f"${actual_annual_conversion:,.2f}" 
+                    sr = f"${y_row.get('start_roth', 0.00):,.2f}"
+                    le = f"${y_row.get('living_expense', 0.00):,.2f}"
+                    ct = f"${combined_taxes:,.2f}"
+                    hc = f"${y_row.get('healthcare_cost', 0.00):,.2f}"
+                    inf = f"${y_row.get('pension_ss_rent', 0.00):,.2f}"
+                    bg = f"${y_brok_gains:,.2f}"
+                    ri = f"${y_req_income:,.2f}"
+                    fb = f"${y_from_brokerage:,.2f}"
+                    fr = f"${y_from_roth:,.2f}"
+                    f4 = f"${y_from_401k:,.2f}"
+                    er = f"${y_row.get('end_roth', 0.00):,.2f}"
+                    
+                    yr_short = str(y_row.get('year', 2027))[-2:]
+                    print(f"{y_idx + 1:<3} | {yr_short:<4} | {active_b_pct:<7} | {sb:<14} | {st:<14} | {sc:<14} | {sr:<14} | {le:<14} | {ct:<12} | {hc:<12} | {inf:<13} | {bg:<12} | {ri:<14} | {fb:<13} | {fr:<13} | {f4:<13} | {er:<14}")
+                          
+                print("-"*286)
+                print(f"{'TOTALS':<10} | {'-':<7} | {'-':<14} | {'-':<14} | ${grand_totals['conversions']:<12,.2f} | {'-':<14} | ${grand_totals['living_exp']:<12,.2f} | ${grand_totals['taxes']:<11,.2f} | ${grand_totals['health']:<11,.2f} | ${grand_totals['base_inflow']:<12,.2f} | ${grand_totals['brok_gains']:<11,.2f} | ${grand_totals['required_income']:<13,.2f} | ${grand_totals['brokerage']:<12,.2f} | ${grand_totals['roth']:<12,.2f} | ${grand_totals['401k']:<12,.2f} | {'-':<14}")
+                print("="*286)
             
             export_input = input(f"\nWould you like to generate full custom Excel/PDF files for Rank {target_rank}? (y/n): ").strip().lower()
             if export_input == 'y':

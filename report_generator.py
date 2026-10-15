@@ -216,6 +216,62 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
             col_letter = get_column_letter(first_cell_in_column.column)
             ws_target.column_dimensions[col_letter].width = max(max_len + 5, 18)
             
+    # =========================================================================
+    # TAB 3 SETUP: SIDE-BY-SIDE BROKERAGE VS ROTH MATRIX
+    # =========================================================================
+    ws_dual = wb.create_sheet(title=f"Asset Flow Matrix Rank {target_rank}")
+    ws_dual.sheet_view.showGridLines = True
+    
+    # 1. Header Banner Setup
+    ws_dual.merge_cells("A1:J1")
+    ws_dual["A1"] = "ANNUAL SIDE-BY-SIDE RESERVES VALUE AND CAPITAL WITHDRAWALS TRACKER"
+    ws_dual["A1"].font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    ws_dual["A1"].fill = navy_fill
+    ws_dual["A1"].alignment = align_center
+    
+    # 2. Section Sub-Headers and Column Category Headers
+    ws_dual.merge_cells("B3:E3")
+    ws_dual["B3"] = "TAXABLE BROKERAGE POOL FLOWS"
+    ws_dual["B3"].font = font_data_bold; ws_dual["B3"].alignment = align_center
+    
+    ws_dual.merge_cells("F3:J3")
+    ws_dual["F3"] = "TAX-FREE ROTH POOL FLOWS"
+    ws_dual["F3"].font = font_data_bold; ws_dual["F3"].alignment = align_center
+    
+    matrix_headers = ["Age", "Start Bal", "Yield/Gain", "Total Draw", "End Bal", "Start Bal", "Amt Convert", "Yield/Gain", "Total Draw", "End Bal"]
+    for c_idx, text in enumerate(matrix_headers, start=1):
+        cell = ws_dual.cell(row=4, column=c_idx, value=text)
+        cell.font = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+        cell.fill = gray_fill
+        cell.alignment = align_center
+        cell.border = thin_border
+        
+    # 3. Process and Populate Row Records Matrix
+    for offset_idx, y_row in enumerate(full_timeline_data):
+        r_idx = 5 + offset_idx
+        sb_b = y_row.get("start_brokerage", 0.0)
+        eb_b = y_row.get("end_brokerage", 0.0)
+        yd_b = y_row.get("brokerage_gains", 0.0)
+        dr_b = sum(m.get("from_brokerage", 0.0) for m in y_row["monthly_ledger"])
+        
+        sb_r = y_row.get("start_roth", 0.0)
+        eb_r = y_row.get("end_roth", 0.0)
+        conv = y_row.get("actual_conversion", 0.0)
+        dr_r = sum(m.get("from_roth", 0.0) for m in y_row["monthly_ledger"])
+        yd_r = max(0.0, eb_r + dr_r - sb_r - conv)
+        
+        row_payload = [y_row.get("wife_age", 47 + offset_idx), sb_b, yd_b, dr_b, eb_b, sb_r, conv, yd_r, dr_r, eb_r]
+        
+        for c_idx, val in enumerate(row_payload, start=1):
+            cell = ws_dual.cell(row=r_idx, column=c_idx, value=val)
+            cell.font = font_data; cell.border = thin_border
+            if r_idx % 2 == 0:
+                cell.fill = PatternFill(start_color="F2F4F4", end_color="F2F4F4", fill_type="solid")
+            if c_idx > 1:
+                cell.number_format = '$#,##0.00'; cell.alignment = align_right
+            else:
+                cell.alignment = align_center
+
     wb.save(excel_name)
     print(f"[SUCCESS] High-fidelity reporting spreadsheet compiled into: '{excel_name}'")
 
@@ -424,6 +480,51 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
     # --- REPOSITIONED: 30-YEAR MACRO TRAJECTORY CHART MOVED DIRECTLY UNDER LEDGER WINDOW TABLE ---
     story.append(Paragraph("30-YEAR MACRO PORTFOLIO WEALTH TRAJECTORY OVERVIEW", section_style))
     story.append(d_macro_chart)
+
+    # 1. Initialize Page Break and Section Header
+    story.append(PageBreak())
+    story.append(Paragraph("ANNUAL BROKERAGE VS ROTH BALANCE MATRIX", section_style))
+    
+    # 2. Compile Grid Table Headers
+    matrix_headers = [
+        Paragraph("Age", table_hdr), 
+        Paragraph("Brok Start", table_hdr), Paragraph("Brok Yield", table_hdr), Paragraph("Brok Outflow", table_hdr), Paragraph("Brok End", table_hdr),
+        Paragraph("Roth Start", table_hdr), Paragraph("Amt Convert", table_hdr), Paragraph("Roth Yield", table_hdr), Paragraph("Roth Outflow", table_hdr), Paragraph("Roth End", table_hdr)
+    ]
+    matrix_rows = [matrix_headers]
+    
+    # 3. Parse Data and Calculate Internal Compounding Returns
+    for y_idx, y_row in enumerate(full_timeline_data):
+        sb_b = y_row.get("start_brokerage", 0.0)
+        eb_b = y_row.get("end_brokerage", 0.0)
+        yd_b = y_row.get("brokerage_gains", 0.0)
+        dr_b = sum(m.get("from_brokerage", 0.0) for m in y_row["monthly_ledger"])
+        
+        sb_r = y_row.get("start_roth", 0.0)
+        eb_r = y_row.get("end_roth", 0.0)
+        conv = y_row.get("actual_conversion", 0.0)
+        dr_r = sum(m.get("from_roth", 0.0) for m in y_row["monthly_ledger"])
+        yd_r = max(0.0, eb_r + dr_r - sb_r - conv)
+        
+        matrix_rows.append([
+            Paragraph(str(y_row.get("wife_age", 47 + y_idx)), cell_bold),
+            Paragraph(f"${sb_b:,.0f}", cell_right), Paragraph(f"${yd_b:,.0f}", cell_right), Paragraph(f"${dr_b:,.0f}", cell_right), Paragraph(f"${eb_b:,.0f}", cell_right),
+            Paragraph(f"${sb_r:,.0f}", cell_right), Paragraph(f"${conv:,.0f}", cell_right), Paragraph(f"${yd_r:,.0f}", cell_right), Paragraph(f"${dr_r:,.0f}", cell_right), Paragraph(f"${eb_r:,.0f}", cell_right)
+        ])
+        if eb_b <= 0.01 and eb_r <= 0.01:
+            break
+            
+    # 4. Apply Table Grid Formatting Masks
+    t_dual_matrix = Table(matrix_rows, colWidths=[24, 78, 78, 78, 78, 78, 78, 78, 78, 80])
+    t_dual_matrix.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1F497D')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7E9')),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#1F497D')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9F9')])
+    ]))
+    story.append(t_dual_matrix)
+
     story.append(Spacer(1, 10))
 
     # --- MERGED DATA VISUALIZATION BAR GRAPH TRACKERS ---
