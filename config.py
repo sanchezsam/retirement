@@ -25,7 +25,7 @@ PHASE_1_DURATION_YEARS = 7  # Specify exactly how long Phase 1 (Low Income/Holid
 STARTING_BALANCES = {
     "brokerage_1": 71435.69,
     "brokerage_2": 15673.00,
-    "house_sale_proceeds": 300000.00,  # Re-injects your $300k sales proceed shield
+    "house_sale_proceeds": 200000.00,  # Re-injects your $300k sales proceed shield
     "house_equity_invested": 0.00,
     "trad_401k": 1476432.85,
     "roth_pool": 143564.91             # CRITICAL: Grandfathered baseline pool
@@ -51,7 +51,7 @@ ANNUAL_SOCIAL_SECURITY = 100000.00   # Social Security Income Stream (Age 62)
 SPENDING = {
     "phase1_living_expense": 65000.00,
     "phase1_healthcare_cost": 0.00,
-    "phase1_rental_income": 24000.00,
+    "phase1_rental_income": 0.00,
     #"phase1_rental_income": 0.00,
     "phase2_living_expense": 100000.00,
     "phase2_healthcare_cost": 9600.00
