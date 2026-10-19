@@ -185,12 +185,37 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
     """
     timeline_data = []
     base_ceiling =0.00
+   
+    # 1. Fetch the master configuration mapping directly
+    starting_balances = getattr(config, "STARTING_BALANCES", None)
+    if not starting_balances:
+        raise KeyError("[CRITICAL] 'STARTING_BALANCES' dictionary is missing from config.py!")
     
-    starting_balances = getattr(config, "STARTING_BALANCES", {})
-    traditional_401k = starting_balances.get("trad_401k", 1476432.85)
-    roth_pool = starting_balances.get("roth_pool", 130967.93)
+    try:
+        # 2. Force strict, exact dictionary key evaluation (No fallbacks allowed)
+        traditional_401k   = starting_balances["trad_401k"]
+        roth_pool          = starting_balances["roth_pool"]
+        penalty_free_basis = starting_balances["roth_pool"]  # Derived directly from initial Roth principal
+        
+        if custom_brokerage is not None:
+            brokerage_pool = custom_brokerage
+        else:
+            # 3. Calculate the brokerage pool purely by summing live active values
+            brokerage_pool = (
+                starting_balances["brokerage_1"] +
+                starting_balances["brokerage_2"] +
+                starting_balances["house_sale_proceeds"] +
+                starting_balances["house_equity_invested"]
+            )
     
-    penalty_free_basis = starting_balances.get("roth_pool", 130967.93)
+    except KeyError as err:
+        print(f"\n[CRITICAL ERROR] Your config.py is missing a required balance parameter: {err}")
+        print("Please verify that all structural keys match your central command center template layout exactly.")
+        sys.exit(1)
+    
+
+
+ 
     active_conversion_ladder = {}
     
     if custom_brokerage is not None:
@@ -235,44 +260,79 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
             active_bracket = bracket_schedule[year_idx]
         else:
             active_bracket = default_fallback
-            
+        # Ensure structural account values are captured at the start of the year
         start_brokerage = brokerage_pool
         start_trad = traditional_401k
         start_roth = roth_pool
-        
+
         brokerage_gains = start_brokerage * cash_yield
         inflation_multiplier = (1.0 + inflation_rate) ** year_idx
-        
+
+        # ======================================================================
+        # 1. STRUCTURAL INCOME GENERATION LAYER (No mirroring allowed)
+        # ======================================================================
+        natural_inflows = 0.00
+
+        # Phase 1 Rental Stream Vector
+        if year_idx < phase1_duration:
+            rental_income = custom_rent if custom_rent is not None else spending_matrix.get("phase1_rental_income", 24000.00)
+            natural_inflows += rental_income
+
+        # Chronological Guaranteed Stream Additions
+        if wife_age >= 61:
+            natural_inflows += getattr(config, "ANNUAL_PENSION_VALUE", 35250.00) * inflation_multiplier
+        if wife_age >= 62:
+            natural_inflows += getattr(config, "ANNUAL_SOCIAL_SECURITY", 100000.00) * inflation_multiplier
+
+        # Extract conversion metrics cleanly
+        converted_amount = locals().get("conversion_amount", 0.00)
+        if converted_amount == 0.00 and 'target_conversion' in locals():
+            converted_amount = target_conversion
+
+        # Calculate True ACA MAGI (Inflows + Conversions + Capital Gains)
+        current_magi = natural_inflows + converted_amount + brokerage_gains
+
+        # ======================================================================
+        # 2. LIFECYCLE SPENDING OUTLAY LAYER
+        # ======================================================================
         if year_idx < phase1_duration:
             if custom_living is not None:
                 living_exp = custom_living * inflation_multiplier
             else:
                 living_exp = spending_matrix.get("phase1_living_expense", 65000.00) * inflation_multiplier
-            health_cost = spending_matrix.get("phase1_healthcare_cost", 0.00) * inflation_multiplier
-            rental_income = custom_rent if custom_rent is not None else spending_matrix.get("phase1_rental_income", 24000.00)
             
-            base_outflows = living_exp + health_cost
-            baseline_inflows = rental_income
+            # Phase 1 Strategy Rule: Insurance is bypassed by design choice
+            health_cost = 0.00  
         else:
             living_exp = spending_matrix.get("phase2_living_expense", 100000.00) * inflation_multiplier
-            health_cost = spending_matrix.get("phase2_healthcare_cost", 9600.00) * inflation_multiplier
-            
+
+            # Apply "Smile Curve" Aging Reductions
             if wife_age >= 80:
                 living_exp *= aging_modifiers.get("age_80_no_go", 0.70)
             elif wife_age >= 70:
                 living_exp *= aging_modifiers.get("age_70_slow_go", 0.85)
-                
-            base_outflows = living_exp + health_cost
-            baseline_inflows = 0.00
+
+            # Evaluate ACA Premium Subsidies accurately against current-year MAGI
+            aca_ceiling = getattr(config, "TAX_SHIELDS", {}).get("aca_magi_ceiling", 85000.00)
+            if current_magi <= aca_ceiling:
+                health_cost = 0.00  # Safe zone: Subsidies drop out-of-pocket costs to zero
+            else:
+                health_cost = spending_matrix.get("phase2_healthcare_cost", 9600.00) * inflation_multiplier
+
+        # Finalize standalone outlays
+        base_outflows = living_exp + health_cost
+
+        # ======================================================================
+        # 3. DEFICIT ACCOUNT WATERFALL
+        # ======================================================================
+        net_deficit = max(0.00, base_outflows - natural_inflows)
+        from_inflow = min(base_outflows, natural_inflows)
+
+        # Ensure your print/logging variables use natural_inflows instead of the overridden baseline_inflows
+        baseline_inflows = natural_inflows
             
-        if wife_age >= 61:
-            baseline_inflows += getattr(config, "ANNUAL_PENSION_VALUE", 35250.00) * inflation_multiplier
-        if wife_age >= 62:
-            baseline_inflows += getattr(config, "ANNUAL_SOCIAL_SECURITY", 100000.00) * inflation_multiplier
-            
-        net_deficit = max(0.00, base_outflows - baseline_inflows)
-        from_inflow = min(base_outflows, baseline_inflows)
         from_brokerage = from_401k = from_roth = 0.00
+
         
         if net_deficit > 0:
             from_brokerage = min(brokerage_pool, net_deficit)
@@ -436,7 +496,7 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
             "start_brokerage": start_brokerage, "start_trad": start_trad, "start_roth": start_roth,
             "end_brokerage": brokerage_pool, "end_trad": traditional_401k, "end_roth": roth_pool, 
             "fed_tax": fed_tax, "nm_tax": nm_tax, "total_taxes": total_taxes, "living_expense": living_exp,
-            "healthcare_cost": health_cost, "pension_ss_rent": from_inflow, "monthly_ledger": monthly_ledger,
+            "healthcare_cost": health_cost, "pension_ss_rent": natural_inflows, "monthly_ledger": monthly_ledger,
             "actual_conversion": actual_conversion, "true_taxable_income": y_total_taxable_income,
             "required_income": living_exp + total_taxes + health_cost, "brokerage_gains": brokerage_gains
         }

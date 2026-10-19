@@ -20,7 +20,7 @@ from reportlab.graphics.charts.legends import Legend
 
 import config
 
-def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, rotation_list, grand_total_taxes, grand_total_health, grand_total_base_inflow, grand_total_util_inflow, grand_total_brokerage, grand_total_roth, grand_total_401k):
+def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, rotation_list, grand_total_taxes, grand_total_health, grand_total_base_inflow, grand_total_conversions, grand_total_brokerage, grand_total_roth, grand_total_401k):
     y1_row = full_timeline_data[0] if full_timeline_data else {}
     fed_quarter_voucher = y1_row.get("fed_tax", 0.0) / 4.0
     nm_quarter_voucher = y1_row.get("nm_tax", 0.0) / 4.0
@@ -664,14 +664,18 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         d_chart = Drawing(752, 125)
         vbc = VerticalBarChart()
         vbc.x, vbc.y, vbc.height, vbc.width = 45, 15, 75, 620
+        
         brok_bal_series, trad_bal_series, roth_bal_series = [], [], []
+        
+        # CORRECTED: Pull month-by-month historical data markers across all pools
         for m_b in y_row["monthly_ledger"]:
-            brok_bal_series.append(m_b.get("end_brokerage", y_row["start_brokerage"]))
-            trad_bal_series.append(m_b.get("end_trad", y_row["start_trad"]))
-            roth_bal_series.append(m_b.get("end_roth", y_row["start_roth"]))
-
+            brok_bal_series.append(m_b.get("from_brokerage", 0.0))  # Drawdowns tracking
+            trad_bal_series.append(m_b.get("from_401k", 0.0))
+            roth_bal_series.append(m_b.get("from_roth", 0.0))
+            
         vbc.data = [trad_bal_series, roth_bal_series, brok_bal_series]
         vbc.categoryAxis.categoryNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
         vbc.categoryAxis.labels.fontSize, vbc.categoryAxis.labels.fontName = 6, 'Helvetica-Bold'
         vbc.categoryAxis.style = 'stacked'
         vbc.valueAxis.valueMin = 0
