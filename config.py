@@ -25,7 +25,7 @@ PHASE_1_DURATION_YEARS = 7  # Specify exactly how long Phase 1 (Low Income/Holid
 STARTING_BALANCES = {
     "brokerage_1": 71435.69,
     "brokerage_2": 15673.00,
-    "house_sale_proceeds": 200000.00,  # Re-injects your $300k sales proceed shield
+    "house_sale_proceeds": 450000.00,  # Re-injects your $300k sales proceed shield
     "house_equity_invested": 0.00,
     "trad_401k": 1476432.85,
     "roth_pool": 143564.91             # CRITICAL: Grandfathered baseline pool
@@ -39,9 +39,9 @@ TOTAL_INITIAL_BROKERAGE = (
 )
 
 # 3. Market and Yield Economic Parameters
-GROWTH_RATE = 0.07             # 6.0% Portfolio Core Growth Rate
-CASH_YIELD_RATE = 0.04         # 4.0% HYSA / Cash Yield Rate
-INFLATION_RATE = 0.03          # 3.0% Baseline Consumer Inflation
+GROWTH_RATE = 0.065            # 6.5% Nominal Portfolio Core Growth Rate
+CASH_YIELD_RATE = 0.035        # 3.5% Long-Term Yield Base (HYSA / Cash T-Bills)
+INFLATION_RATE = 0.030         # 3.0% Baseline Consumer Inflation (CPI Long-Term)
 
 # 4. Cash Inflow Stream Vectors
 ANNUAL_PENSION_VALUE = 35250.00      # Wife Pension Income Stream (Age 61)
