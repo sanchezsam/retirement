@@ -244,10 +244,12 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
     wife_start_age = getattr(config, "WIFE_START_AGE", 47)
     default_fallback = getattr(config, "DEFAULT_FALLBACK_BRACKET", 22)
 
-    for year_idx in range(30):
+    for year_idx in range(44):
         current_year = start_year + year_idx
         wife_age = wife_start_age + year_idx
-        
+        # Line 378 of your original optimize_hybrid.py file:
+        husband_age = getattr(config, "HUSBAND_START_AGE", 46) + year_idx
+
         penalty = 0.00
         is_broken = False
         
@@ -325,12 +327,19 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
         # ======================================================================
         # 3. DEFICIT ACCOUNT WATERFALL
         # ======================================================================
-        net_deficit = max(0.00, base_outflows - natural_inflows)
-        from_inflow = min(base_outflows, natural_inflows)
+        # ======================================================================
+        # 3. DEFICIT ACCOUNT WATERFALL & REINVESTMENT ENGINE (LINE 330 FIX)
+        # ======================================================================
+        # Natively captures and compounds excess pension/SS cash flow into your brokerage pool
+        if natural_inflows > base_outflows:
+            surplus_cash = natural_inflows - base_outflows
+            brokerage_pool += surplus_cash
+            net_deficit = 0.00
+            from_inflow = base_outflows
+        else:
+            net_deficit = max(0.00, base_outflows - natural_inflows)
+            from_inflow = natural_inflows
 
-        # Ensure your print/logging variables use natural_inflows instead of the overridden baseline_inflows
-        baseline_inflows = natural_inflows
-            
         from_brokerage = from_401k = from_roth = 0.00
 
         
@@ -502,7 +511,9 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
         }
         timeline_data.append(year_row)
         
-        if (brokerage_pool + traditional_401k + roth_pool) <= 500.00:
+        #if (brokerage_pool + traditional_401k + roth_pool) <= 500.00:
+        #    break
+        if husband_age >= 90:
             break
             
     return timeline_data

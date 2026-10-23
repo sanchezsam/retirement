@@ -536,17 +536,22 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
     chart_trad_bal = [r.get("end_trad", 0.0) for r in active_years_data]
     chart_req_income = [r.get("required_income", 0.0) for r in active_years_data]
 
-    story.append(Paragraph("INTEGRATED RETIREMENT RESERVES DYNAMICS (BALANCES VS WITHDRAWALS WITH REQ INCOME OVERLAY)", section_style))
+    
+    # Symmetrical layout adjustments to absorb the 44-column footprint beautifully
+    story.append(Paragraph("INTEGRATED RETIREMENT RESERVES DYNAMICS (BALANCES VS WITHDRAWALS)", section_style))
     d_br_chart = Drawing(752, 145)
     br_vbc = VerticalBarChart()
-    br_vbc.x, br_vbc.y, br_vbc.height, br_vbc.width = 45, 15, 95, 660
-
-    # UNIFIED GLOBAL ACCOUNT COLOR PALETTE RE-SYNCHRONIZATION
+    
+    # 1. Expand the graphic width area constraint slightly to clear the labels
+    br_vbc.x, br_vbc.y, br_vbc.height, br_vbc.width = 40, 15, 95, 680
     br_vbc.data = [chart_trad_bal, chart_brok_bal, chart_roth_bal, chart_brok_draw, chart_roth_draw]
     br_vbc.categoryAxis.categoryNames = chart_years
-    br_vbc.categoryAxis.labels.fontSize = 5.5
-    br_vbc.categoryAxis.labels.angle = 45
     
+    # 2. Drop category font size down to 4.5 points and angle them to prevent text overlap fragmentation
+    br_vbc.categoryAxis.labels.fontSize = 4.5
+    br_vbc.categoryAxis.labels.angle = 90  # Turns numbers vertically for high-fidelity scanning
+    br_vbc.categoryAxis.labels.dy = -15
+
     max_val_dynamics = max(max(chart_trad_bal), max(chart_brok_bal), max(chart_roth_bal)) * 1.10 if chart_trad_bal else 100000
     br_vbc.valueAxis.valueMin = 0
     br_vbc.valueAxis.valueMax = max_val_dynamics

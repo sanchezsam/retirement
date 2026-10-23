@@ -441,22 +441,31 @@ def run_financial_simulation(bracket_schedule, custom_brokerage=None, custom_ren
                     "from_roth": 0.00, "from_401k": 0.00, "health_draw": 0.00
                 })
 
+        # Safely establish missing string markers to prevent NameError compilation crashes
+        safeguard_label = ""
+        if "rmd_label_tag" in locals() and rmd_label_tag:
+            safeguard_label = rmd_label_tag
+        elif "sepp_label_tag" in locals() and sepp_label_tag:
+            safeguard_label = sepp_label_tag
+
         year_row = {
             "year": current_year, "wife_age": wife_age, "husband_age": husband_age,
             "active_bracket": f"{active_bracket}%" if active_bracket > 0 else "0%",
             "start_brokerage": start_brokerage, "start_trad": start_trad, "actual_conversion": actual_conversion,
             "start_roth": start_roth, "living_expense": living_exp, "total_taxes": total_taxes,
             "fed_tax": fed_tax, "nm_tax": nm_tax, "true_taxable_income": y_total_taxable_income,
-            "rmd_amount": rmd_distribution, "healthcare_cost": health_cost, "pension_ss_rent": natural_inflows, 
-            "brokerage_gains": brokerage_gains, "required_income": living_exp + total_taxes + health_cost, 
-            "from_brokerage": from_brokerage, "from_roth": from_roth, "from_401k": from_401k, 
-            "label_suffix": label_suffix, "end_roth": roth_pool, "end_brokerage": brokerage_pool, 
+            "rmd_amount": rmd_distribution, "healthcare_cost": health_cost, "pension_ss_rent": natural_inflows,
+            "brokerage_gains": brokerage_gains, "required_income": living_exp + total_taxes + health_cost,
+            "from_brokerage": from_brokerage, "from_roth": from_roth, "from_401k": from_401k,
+            "label_suffix": safeguard_label, "end_roth": roth_pool, "end_brokerage": brokerage_pool,
             "end_trad": traditional_401k, "monthly_ledger": monthly_ledger
         }
         timeline_data.append(year_row)
-        if (brokerage_pool + traditional_401k + roth_pool) <= 500.00:
+
+        # OVERRIDE THE PREMATURE BALANCES BREAK SWITCH WITH A REPAIRED AGE CEILING CONSTRAINT
+        if husband_age >= 90:
             break
-            
+
     return timeline_data
 
 
