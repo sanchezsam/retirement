@@ -278,9 +278,21 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
     # --- 2. REPORTLAB PDF COMPILER MASTER FACTORY ---
     print("[DEBUG] Launching PDF ReportLab flowable factory...")
     
-    doc = SimpleDocTemplate(pdf_name, pagesize=landscape(letter), leftMargin=20, rightMargin=20, topMargin=25, bottomMargin=25)
-    styles = getSampleStyleSheet()
+       # === STEP 1: DROP THESE REPAIRED IMPORTS AT THE TOP OF THE FUNCTION ===
+    from reportlab.lib.pagesizes import A3, landscape
     
+    # === STEP 2: OVERWRITE YOUR EXISTING DOC INITIALIZATION BLOCK ===
+    # This automatically shifts your printable boundary width up to 1,191 points natively!
+    doc = SimpleDocTemplate(
+        pdf_name,
+        pagesize=landscape(A3),
+        leftMargin=20,
+        rightMargin=20,
+        topMargin=25,
+        bottomMargin=25
+    )
+    styles = getSampleStyleSheet()
+ 
     title_style = ParagraphStyle('DocTitle', parent=styles['Heading1'], fontName='Helvetica-Bold', fontSize=13, textColor=colors.HexColor('#1F497D'), spaceAfter=10, alignment=1)
     section_style = ParagraphStyle('DocSection', fontName='Helvetica-Bold', fontSize=10, textColor=colors.HexColor('#1F497D'), spaceBefore=12, spaceAfter=6)
     sub_section_style = ParagraphStyle('DocSubSection', fontName='Helvetica-Bold', fontSize=8, textColor=colors.HexColor('#2C3E50'), spaceBefore=6, spaceAfter=4)
@@ -394,15 +406,39 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
     # --- PAGE 2 TRANSITION: ENFORCES CLEAN ISOLATION FOR SUMMARY MATRIX ---
     story.append(PageBreak())
 
+
+
+    # High-contrast white typography formatting rules for top table rows
+    table_hdr = ParagraphStyle(
+        'TableHdr', parent=styles['Normal'], fontName='Helvetica-Bold', 
+        fontSize=6.5, leading=7.5, alignment=1, textColor=colors.white
+    )
+
     story.append(Paragraph("SUMMARY ACTIVE RETIREMENT CONVERSION LEDGER WINDOW", section_style))
     
+       # REPAIRED HIGH-FIDELITY LANDSCAPE HEADERS: EXACTLY 19 LABELS MAPPED 1-TO-1
     ledger_pdf_rows = [[
-        Paragraph("#", table_hdr), Paragraph("Yr", table_hdr), Paragraph("Bracket", table_hdr), Paragraph("Brok Start", table_hdr), Paragraph("401k Start", table_hdr),
-        Paragraph("Conversion", table_hdr), Paragraph("Living Exp", table_hdr), Paragraph("Est Taxes", table_hdr), Paragraph("Health Cost", table_hdr), 
-        Paragraph("Inflow Base", table_hdr), Paragraph("Brok Yield", table_hdr), Paragraph("Req Income", table_hdr), Paragraph("From Inflow", table_hdr), 
-        Paragraph("From Brok", table_hdr), Paragraph("From Roth", table_hdr), Paragraph("End Roth", table_hdr)
-    ]]
-    
+        Paragraph("<b>#</b>", table_hdr), 
+        Paragraph("<b>Yr</b>", table_hdr), 
+        Paragraph("<b>Age (W/H)</b>", table_hdr), 
+        Paragraph("<b>Bracket</b>", table_hdr), 
+        Paragraph("<b>Brok Start</b>", table_hdr), 
+        Paragraph("<b>401k Start</b>", table_hdr),
+        Paragraph("<b>Conversion</b>", table_hdr), 
+        Paragraph("<b>Roth Start</b>", table_hdr),
+        Paragraph("<b>Living Exp</b>", table_hdr), 
+        Paragraph("<b>Est Taxes</b>", table_hdr), 
+        Paragraph("<b>Health Cost</b>", table_hdr), 
+        Paragraph("<b>Inflow Base</b>", table_hdr), 
+        Paragraph("<b>Brok Yield</b>", table_hdr), 
+        Paragraph("<b>Req Income</b>", table_hdr), 
+        Paragraph("<b>From Inflow</b>", table_hdr), 
+        Paragraph("<b>From Brok</b>", table_hdr), 
+        Paragraph("<b>From Roth</b>", table_hdr), 
+        Paragraph("<b>From 401k</b>", table_hdr),  # Added column heading label
+        Paragraph("<b>End Roth</b>", table_hdr)
+    ]] 
+
     truncated_total_taxes = 0.00
     truncated_total_health = 0.00
     truncated_total_base_inflow = 0.00
@@ -412,6 +448,8 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
     truncated_total_living = 0.00
     truncated_total_req_income = 0.00
     t_brok_gains = 0.00
+    # INITIALIZE THE PRE-TAX SUMMARY COLUMN TRACKER
+    truncated_total_401k_draw = 0.00
     
     active_years_data = []
     for y_idx, y_row in enumerate(full_timeline_data):
@@ -420,6 +458,9 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         y_from_inflow = sum(m["from_inflow"] for m in y_row["monthly_ledger"])
         y_from_brokerage = sum(m["from_brokerage"] for m in y_row["monthly_ledger"])
         y_from_roth = sum(m["from_roth"] for m in y_row["monthly_ledger"])
+        
+        # EXTRACT THE MONTHLY PRE-TAX PULLS NATIVELY FROM MEMORY POOLS
+        y_from_401k = sum(m.get("from_401k", 0.00) for m in y_row["monthly_ledger"])
         
         y_living = y_row.get("living_expense", 0.00)
         y_req_income = y_row.get("required_income", 0.00)
@@ -434,47 +475,101 @@ def generate_custom_dossiers(target_rank, selected_record, full_timeline_data, r
         truncated_total_living += y_living
         truncated_total_req_income += y_req_income
         t_brok_gains += y_brok_gains
+        truncated_total_401k_draw += y_from_401k
 
         yr_short = str(y_row['year'])[-2:]
+        age_str = f"{y_row.get('wife_age', 0)}/{y_row.get('husband_age', 0)}"
+        h_age = y_row.get("husband_age", 46)
+        
+        # Affix dynamic custom status labels for ReportLab Flowable Cells
+        if h_age >= 75 and y_from_401k > 0.01:
+            pdf_tag = " [RMD]"
+        elif (52 <= h_age < 60) and y_from_401k > 0.01:
+            pdf_tag = " [SEPP]"
+        else:
+            pdf_tag = ""
+            
+        f4_cell_text = f"${y_from_401k:,.0f}{pdf_tag}"
+
+        # REPAIRED: Exactly 19 cell paragraph entries mapped horizontally corner-to-corner
         ledger_pdf_rows.append([
-            Paragraph(f"{y_idx + 1}", cell_bold), Paragraph(yr_short, cell_reg), Paragraph(pct_val, cell_reg), 
+            Paragraph(f"{y_idx + 1}", cell_bold), Paragraph(yr_short, cell_reg), Paragraph(age_str, cell_reg), Paragraph(pct_val, cell_reg), 
             Paragraph(f"${y_row['start_brokerage']:,.0f}", cell_right), Paragraph(f"${y_row['start_trad']:,.0f}", cell_right), Paragraph(f"${y_row['actual_conversion']:,.0f}", cell_right), 
-            Paragraph(f"${y_living:,.0f}", cell_right), Paragraph(f"${c_tax:,.0f}", cell_right), Paragraph(f"${y_row['healthcare_cost']:,.0f}", cell_right), 
+            Paragraph(f"${y_row['start_roth']:,.0f}", cell_right), Paragraph(f"${y_living:,.0f}", cell_right), Paragraph(f"${c_tax:,.0f}", cell_right), Paragraph(f"${y_row['healthcare_cost']:,.0f}", cell_right), 
             Paragraph(f"${y_row['pension_ss_rent']:,.0f}", cell_right), Paragraph(f"${y_brok_gains:,.0f}", cell_right), Paragraph(f"${y_req_income:,.0f}", cell_right), Paragraph(f"${y_from_inflow:,.0f}", cell_right), 
-            Paragraph(f"${y_from_brokerage:,.0f}", cell_right), Paragraph(f"${y_from_roth:,.0f}", cell_right), Paragraph(f"${y_row['end_roth']:,.0f}", cell_right)
+            Paragraph(f"${y_from_brokerage:,.0f}", cell_right), Paragraph(f"${y_from_roth:,.0f}", cell_right), Paragraph(f4_cell_text, cell_right), Paragraph(f"${y_row['end_roth']:,.0f}", cell_right)
         ])
+
         active_years_data.append(y_row)
         if y_row["end_trad"] <= 0.01:
             break
 
+    # REPAIRED TOTALS ROW: Exactly 19 columns matching the header layout side-by-side
+    bold_totals_style = ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)
+    
     ledger_pdf_rows.append([
-        Paragraph("TOTALS", cell_bold), Paragraph("-", cell_reg), Paragraph("-", cell_reg), Paragraph("-", cell_reg), Paragraph("-", cell_reg), Paragraph("-", cell_reg), 
-        Paragraph(f"${truncated_total_living:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)),
-        Paragraph(f"${truncated_total_taxes:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
-        Paragraph(f"${truncated_total_health:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
-        Paragraph(f"${truncated_total_base_inflow:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
-        Paragraph(f"${t_brok_gains:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
-        Paragraph(f"${truncated_total_req_income:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)),
-        Paragraph(f"${truncated_total_util_inflow:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
-        Paragraph(f"${truncated_total_brokerage:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
-        Paragraph(f"${truncated_total_roth:,.0f}", ParagraphStyle('TBR', parent=cell_right, fontName='Helvetica-Bold', fontSize=6.5)), 
-        Paragraph("-", cell_reg)
+        Paragraph("TOTALS", ParagraphStyle('TBL', parent=cell_bold, fontName='Helvetica-Bold', fontSize=6.5)), 
+        Paragraph("-", cell_reg), 
+        Paragraph("-", cell_reg), 
+        Paragraph("-", cell_reg),
+        Paragraph("-", cell_right), 
+        Paragraph("-", cell_right), 
+        Paragraph(f"${grand_total_conversions:,.0f}", bold_totals_style),
+        Paragraph("-", cell_right), 
+        Paragraph(f"${truncated_total_living:,.0f}", bold_totals_style), 
+        Paragraph(f"${truncated_total_taxes:,.0f}", bold_totals_style),
+        Paragraph(f"${truncated_total_health:,.0f}", bold_totals_style), 
+        Paragraph(f"${truncated_total_base_inflow:,.0f}", bold_totals_style), 
+        Paragraph(f"${t_brok_gains:,.0f}", bold_totals_style),
+        Paragraph(f"${truncated_total_req_income:,.0f}", bold_totals_style), 
+        Paragraph(f"${truncated_total_util_inflow:,.0f}", bold_totals_style), 
+        Paragraph(f"${truncated_total_brokerage:,.0f}", bold_totals_style),
+        Paragraph(f"${truncated_total_roth:,.0f}", bold_totals_style), 
+        # INJECTED: Maps your new conformed pre-tax summary column metrics total
+        Paragraph(f"${truncated_total_401k_draw:,.0f}", bold_totals_style), 
+        Paragraph("-", cell_right)
     ])
 
-    t_ledg = Table(ledger_pdf_rows, colWidths=[20, 22, 38, 50, 50, 50, 48, 48, 48, 50, 48, 52, 48, 48, 48, 64])
+    # High-fidelity wide-track column point allocation matrix for A3 Landscape (1,151 total points)
+    expanded_col_widths = [
+        25,   # 1. # Index
+        25,   # 2. Yr
+        50,   # 3. Age (W/H)
+        45,   # 4. Bracket
+        70,   # 5. Brok Start
+        70,   # 6. 401k Start
+        70,   # 7. Conversion
+        70,   # 8. Roth Start
+        65,   # 9. Living Exp
+        55,   # 10. Est Taxes
+        60,   # 11. Health Cost
+        60,   # 12. Inflow Base
+        55,   # 13. Brok Yield
+        65,   # 14. Req Income
+        60,   # 15. From Inflow
+        60,   # 16. From Brok
+        60,   # 17. From Roth
+        86,   # 18. From 401k (Padded wide for long tags like [RMD] / [SEPP])
+        70    # 19. End Roth
+    ]
+
+    # Re-link your table structure to use the expanded wide-track layout columns
+    t_ledg = Table(ledger_pdf_rows, colWidths=expanded_col_widths, repeatRows=1)
+    
+    # Relax cell paddings to 3.0 points to make the document highly readable
     t_ledg.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1F497D')), 
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-        ('INNERGRID', (0,0), (-1,-2), 0.5, colors.HexColor('#E5E7E9')), 
-        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor('#1F497D')), 
-        ('ROWBACKGROUNDS', (0,1), (-1,-2), [colors.white, colors.HexColor('#F8F9F9')]), 
-        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor('#EAEDED')),
-        ('TOPPADDING', (0,0), (-1,-1), 2),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-        ('LEFTPADDING', (0,0), (-1,-1), 2),
-        ('RIGHTPADDING', (0,0), (-1,-1), 2)
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#34495E')),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3.0),
+        ('TOPPADDING', (0,0), (-1,-1), 3.0),
+        ('LEFTPADDING', (0,0), (-1,-1), 3.0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 3.0),
+        ('GRID', (0,0), (-1,-1), 0.3, colors.HexColor('#D3D3F3')),
     ]))
+    
     story.append(t_ledg)
+
     story.append(Spacer(1, 10))
 
     # --- REPOSITIONED: 30-YEAR MACRO TRAJECTORY CHART MOVED DIRECTLY UNDER LEDGER WINDOW TABLE ---
