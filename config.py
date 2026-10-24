@@ -17,15 +17,15 @@ MAX_ALLOWED_SINGLE_YEAR_TAX = 200000.00
 
 
 #AVAILABLE_BRACKET_CHOICES = [0, 10, 12, 22, 24]
-AVAILABLE_BRACKET_CHOICES = [12, 24]
-AVAILABLE_BRACKET_CHOICES = [12, 22]
+#AVAILABLE_BRACKET_CHOICES = [22, 24]
+AVAILABLE_BRACKET_CHOICES = [12,22,24]
 PHASE_1_DURATION_YEARS = 7  # Specify exactly how long Phase 1 (Low Income/Holiday) runs
 
 # 2. Starting Asset Balances
 STARTING_BALANCES = {
     "brokerage_1": 71435.69,
     "brokerage_2": 15673.00,
-    "house_sale_proceeds": 375000.00,  # Re-injects your $300k sales proceed shield
+    "house_sale_proceeds": 443000.00,  # Re-injects your $300k sales proceed shield
     "house_equity_invested": 0.00,
     "trad_401k": 1476432.85,
     "roth_pool": 143564.91             # CRITICAL: Grandfathered baseline pool
@@ -42,6 +42,7 @@ TOTAL_INITIAL_BROKERAGE = (
 GROWTH_RATE = 0.065            # 6.5% Nominal Portfolio Core Growth Rate
 CASH_YIELD_RATE = 0.035        # 3.5% Long-Term Yield Base (HYSA / Cash T-Bills)
 INFLATION_RATE = 0.030         # 3.0% Baseline Consumer Inflation (CPI Long-Term)
+#INFLATION_RATE = 0.0         # 3.0% Baseline Consumer Inflation (CPI Long-Term)
 
 # 4. Cash Inflow Stream Vectors
 ANNUAL_PENSION_VALUE = 35250.00      # Wife Pension Income Stream (Age 61)
@@ -49,9 +50,9 @@ ANNUAL_SOCIAL_SECURITY = 100000.00   # Social Security Income Stream (Age 62)
 
 # 5. Lifestyle Spending and Outflow Targets
 SPENDING = {
-    "phase1_living_expense": 65000.00,
+    "phase1_living_expense": 80000.00,
     "phase1_healthcare_cost": 0.00,
-    "phase1_rental_income": 12000.00,
+    "phase1_rental_income": 0.00,
     #"phase1_rental_income": 0.00,
     "phase2_living_expense": 100000.00,
     "phase2_healthcare_cost": 9600.00
@@ -78,7 +79,8 @@ SCENARIOS = {
     "base_case": {
         "title": "BASELINE STRATEGY REPORT (6% GROWTH)",
         "growth_rate": 0.06,
-        "inflation_rate": 0.03,
+        #"inflation_rate": 0.03,
+        "inflation_rate": 0.0,
         "filename": "Retirement_Timeline_BASE_CASE_6pct.pdf"
     },
     "stress_test": {

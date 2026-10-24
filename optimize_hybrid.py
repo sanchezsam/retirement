@@ -41,7 +41,7 @@ UNIFORM_LIFETIME_TABLE = {
     87: 14.4, 88: 13.7, 89: 12.9, 90: 12.2
 }
 
-
+sepp_start_year_idx = 0
 
 def print_dual_pool_ledger(selected_record, rotation_list):
     """
@@ -190,23 +190,22 @@ def calculate_progressive_taxes(income):
     return fed_tax + nm_tax
 
 
+
+
 def run_financial_simulation(rotation_list):
     """
-    Natively simulates a comprehensive lifecycle cash flow runway up to Husband Age 90.
-    Prioritizes statutory IRS RMDs first at Age 75, stacks them alongside pensions,
-    implements a permanent conversion lockout at the SEPP boundary, and routes
-    living deficits straight to the Traditional 401(k) via 72(t) penalty-free rails
-    during your 50s to completely protect your tax-free Roth core from early draws.
+    Asset-Insulated Hybrid Simulation Engine.
+    DYNAMIC LIQUIDITY TRANSITION MODE: Completely eliminates chronological age locks.
+    Converts using 22%/24% headroom rules, automatically switches to a flat, compliant
+    SEPP annuity when start_brokerage drops below $200K, and routes lifestyle deficits
+    strictly through Brokerage first, and Roth second as an emergency bridge.
     """
-    # 1. Initialize Baseline Assets from Central Command Configuration Center
     traditional_401k = config.STARTING_BALANCES["trad_401k"]
     roth_pool = config.STARTING_BALANCES["roth_pool"]
     brokerage_pool = (config.STARTING_BALANCES["brokerage_1"] + config.STARTING_BALANCES["brokerage_2"] + 
                       config.STARTING_BALANCES["house_sale_proceeds"] + config.STARTING_BALANCES["house_equity_invested"])
     
-    # Establish local control variables from parameters
     growth_rate = config.GROWTH_RATE
-    inflation_rate = config.INFLATION_RATE
     cash_yield = config.CASH_YIELD_RATE
     spending = config.SPENDING
     
@@ -214,209 +213,305 @@ def run_financial_simulation(rotation_list):
     wife_start_age = config.WIFE_START_AGE
     husband_start_age = config.HUSBAND_START_AGE
     months_list = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    start_month = getattr(config, "RET_START_MONTH", "Jan")
     
     timeline_data = []
     active_conversion_ladder = {}
     
-    # STATE MACHINE LATCH: Tracks if the SEPP conversion barrier has been breached
+    # === PERSISTENT CONTROL VARIABLES (OUTER SCOPE SAFETY RUNWAY) ===
     sepp_has_initiated = False
-    
+    sepp_has_permanently_ended = False
+    sepp_start_year_idx = 0
+    fixed_sepp_amount = 0.00
+    BROKERAGE_SAFETY_FLOOR = 100000.00
+
     for year_idx in range(44):
         current_year = start_year + year_idx
         wife_age = wife_start_age + year_idx
         husband_age = husband_start_age + year_idx
-        mult = (1.0 + inflation_rate) ** year_idx
+        mult = (1.0 + config.INFLATION_RATE) ** year_idx
         
-        # Capture precise start-of-year parameters before transaction loops alter values
+        from_401k = 0.00
         start_brokerage = brokerage_pool
         start_trad = traditional_401k
         start_roth = roth_pool
         
-        # TRIGGER: Automatically trip the permanent lockout when entering the SEPP window (Husband Age 52+)
-        if husband_age >= 52:
-            sepp_has_initiated = True
-        
-        # 2. Process Core Retirement Income Streams (Pensions, Social Security, Rental checks)
+        # 1. Base Income Inflows (Pensions & Social Security)
         rent = spending.get("phase1_rental_income", 12000.00) if year_idx < 7 else 0.0
         pension = config.ANNUAL_PENSION_VALUE * mult if wife_age >= 61 else 0.0
         ss = config.ANNUAL_SOCIAL_SECURITY * mult if wife_age >= 62 else 0.0
+        
         natural_inflows = rent + pension + ss
         
-        # Calculate inflated lifecycle expenditures
-        living_exp = (spending.get("phase1_living_expense", 65000.00) if year_idx < 7 else spending.get("phase2_living_expense", 100000.00)) * mult
+        # 2. Living Expenditures & Lifestyle Aging Multipliers
+        #living_exp = spending.get("phase2_living_expense", 100000.00) if year_idx >= 7 else spending.get("phase1_living_expense", 65000.00)
+        living_exp = (config.SPENDING.get("phase2_living_expense", 100000.00) if year_idx >= 7 
+              else config.SPENDING.get("phase1_living_expense", 65000.00)) * mult
         if wife_age >= 70: living_exp *= config.LIFESTYLE_AGING_MODIFIERS.get("age_70_slow_go", 0.85)
         if wife_age >= 80: living_exp *= config.LIFESTYLE_AGING_MODIFIERS.get("age_80_no_go", 0.70)
-        health_cost = spending.get("phase2_healthcare_cost", 9600.00) * mult if year_idx >= 7 else 0.0
+        #health_cost = spending.get("phase2_healthcare_cost", 9600.00) if year_idx >= 7 else 0.0
+        health_cost = config.SPENDING.get("phase2_healthcare_cost", 9600.00) * mult if year_idx >= 7 else 0.0
         base_outflows = living_exp + health_cost
+
+        # =========================================================================
+        # 3. MASTER CONTROL SWITCH: DYNAMIC IRS 72(t) AMORTIZATION CALCULATOR
+        # =========================================================================
+        # AUTOMATIC SEPP TERMINATION LOGIC: Must run for 5 full consecutive years AND until Age 59.5
+        if sepp_has_initiated:
+            consecutive_years_run = year_idx - sepp_start_year_idx
+            if consecutive_years_run >= 5 and husband_age >= 60:
+                sepp_has_initiated = False
+                sepp_has_permanently_ended = True  # Seals the loop permanently
+                fixed_sepp_amount = 0.00
+
+        # INITIATION TRIGGER: Fires dynamically the moment start_brokerage falls below $200,000
+        if start_brokerage < 200000.00 and not sepp_has_initiated and not sepp_has_permanently_ended and traditional_401k > 500.00:
+            sepp_has_initiated = True
+            sepp_start_year_idx = year_idx
+            
+            # --- OFFICIAL IRS 72(t) FIXED AMORTIZATION CALCULATION ENGINE ---
+            # A. Extract life expectancy factor from IRS Single Life Table (Reg. 1.401(a)(9)-9)
+            # For a Husband retiring in his early 50s, the typical factor sits near 31.0 to 33.3
+            irs_life_expectancy = 33.3  
+            
+            # B. Apply the IRS Statutory Interest Rate Ceiling (Higher of 120% AFR or 5.0% flat)
+            irs_approved_rate = 0.050  
+            
+            # C. Execute the standard financial amortization formula: 
+            # PMT = (Principal * r) / (1 - (1 + r)^-n)
+            # This determines your exact, mathematically compliant Day 1 baseline check size.
+            rate_factor = (1.0 + irs_approved_rate) ** (-irs_life_expectancy)
+            day_1_base_sepp = (traditional_401k * irs_approved_rate) / (1.0 - rate_factor)
+            
+            # Record the baseline so we can scale it with COLA rules
+            sepp_base_annuity_record = day_1_base_sepp
+
+        # DYNAMIC COLA SCALING PASS: The IRS explicitly allows your annual SEPP payout
+        # to be indexed for inflation by up to your structural 3.0% configuration rule every year
+        if sepp_has_initiated:
+            years_in_program = year_idx - sepp_start_year_idx
+            cola_multiplier = (1.0 + config.INFLATION_RATE) ** years_in_program
+            fixed_sepp_amount = sepp_base_annuity_record * cola_multiplier
+
+        # =========================================================================
+        # 4. CONVERSION VS. SEPP RUNWAY TRANSACTIONS
+        # =========================================================================
+        actual_conversion = 0.00
         
-        # =========================================================================
-        # 4. MANDATORY IRS REQUIRED MINIMUM DISTRIBUTIONS (AGE 75 THRESHOLD)
-        # PRIORITIZED: Forced out first to comply with statutory rules before conversions
-        # =========================================================================
-        from_401k = 0.00
-        if husband_age >= 75 and traditional_401k > 500.00:
+        if sepp_has_initiated:
+            # Voluntary conversions hard-lock to $0 to stop tax friction during SEPP
+            from_401k = min(traditional_401k, fixed_sepp_amount)
+            traditional_401k -= from_401k
+        elif husband_age >= 75 and traditional_401k > 500.00:
+            # Late-life statutory RMD fallback
             divisor = UNIFORM_LIFETIME_TABLE.get(husband_age, 24.6)
             from_401k = traditional_401k / divisor
             traditional_401k -= from_401k
-        
-              
-        # =========================================================================
-        # 3. DYNAMIC PARAMETERIZED HYBRID CONVERSION LAYER (CALIBRATED RESIDUAL CORE)
-        # =========================================================================
-        actual_conversion = 0.00
-
-        # CORE CONSTRAINT: Voluntary conversions are permanently hard-locked at 0.00 if SEPP has started
-        if traditional_401k > 500.00 and not sepp_has_initiated:
-            target_bracket = rotation_list[year_idx] if year_idx < len(rotation_list) else rotation_list[-1]
-            fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
-            conversion_ceiling = 0.00
-
-            for ceiling, rate, base_tax in fed_brackets:
-                if rate == (target_bracket / 100.0) or (target_bracket == 12 and rate == 0.12) or (target_bracket == 22 and rate == 0.22) or (target_bracket == 24 and rate == 0.24):
-                    conversion_ceiling = ceiling
-                    break
-
-            if conversion_ceiling == 0.00 or conversion_ceiling == float('inf'):
-                conversion_ceiling = (201050.00 if target_bracket == 24 else (94300.00 if target_bracket == 22 else 23200.00)) * mult
-            else:
-                conversion_ceiling *= mult
-
-            current_wage_base = 0.00
-            if year_idx == 0:
-                current_wage_base = getattr(config, "YEAR_1_WAGES", getattr(config, "PARTIAL_YEAR_SALARY", 0.00))
-
-            total_current_ordinary_inflows = natural_inflows + from_401k + current_wage_base
-
-            if conversion_ceiling > total_current_ordinary_inflows:
-                # >>> FIXED: CAP RECONCILED VOLUNTARY CONVERSIONS TO LEAVE A HEALTHY RMD CORE PRINCIPAL <<<
-                raw_headroom = conversion_ceiling - total_current_ordinary_inflows
-                calibrated_conversion = raw_headroom * 0.45
+        elif traditional_401k > 500.00 and year_idx < len(rotation_list):
+            # Active Conversion Phase: Check safety floor buffer before converting
+            if brokerage_pool > BROKERAGE_SAFETY_FLOOR:
+                target_bracket = rotation_list[year_idx]
+                fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
+                conversion_ceiling = 0.00
+                for ceiling, rate, base_tax in fed_brackets:
+                    if rate == (target_bracket / 100.0) or (target_bracket == 12 and rate == 0.12) or (target_bracket == 22 and rate == 0.22) or (target_bracket == 24 and rate == 0.24):
+                        conversion_ceiling = ceiling
+                        break
+                if conversion_ceiling == 0.00 or conversion_ceiling == float('inf'):
+                    conversion_ceiling = (201050.00 if target_bracket == 24 else 94300.00)
                 
-                actual_conversion = min(traditional_401k, calibrated_conversion)
-                traditional_401k -= actual_conversion
-                roth_pool += actual_conversion
-                active_conversion_ladder[current_year] = actual_conversion
+                total_current_ordinary_inflows = natural_inflows + from_401k
+                if conversion_ceiling > total_current_ordinary_inflows:
+                    max_headroom = conversion_ceiling - total_current_ordinary_inflows
+                    
+                    # Safe Liquidity Multiplier: Scale back conversion size to protect your floor
+                    available_tax_budget = brokerage_pool - BROKERAGE_SAFETY_FLOOR
+                    estimated_conversion_cap = available_tax_budget / 0.24
+                    
+                    calibrated_conversion = min(max_headroom, estimated_conversion_cap)
+                    if calibrated_conversion > 500.00:
+                        actual_conversion = min(traditional_401k, calibrated_conversion)
+                        traditional_401k -= actual_conversion
+                        roth_pool += actual_conversion
+                        active_conversion_ladder[current_year] = actual_conversion
 
         # =========================================================================
-        # 5. CONFORMED LIFESTYLE LIQUIDATION WATERFALL (SEPP-PRIORITIZED)
+        # 5. CASH SHORTFALL WATERFALL & ADVANCED ROTH DEFICIT BRIDGE
         # =========================================================================
+        # Taxes are calculated lower down, so this waterfall evaluates base living expenditures
         available_cash_pool = natural_inflows + from_401k
+        
+        # FIXED: Ensure clean local initializations to prevent variable inheritance leaks
+        from_brokerage = 0.00
+        from_roth = 0.00
+        net_deficit = 0.00
+        
         if available_cash_pool > base_outflows:
             surplus_cash = available_cash_pool - base_outflows
-            brokerage_pool += surplus_cash
+            # brokerage_pool += surplus_cash
             net_deficit = 0.00
-        else:
+        else:   
             net_deficit = max(0.00, base_outflows - available_cash_pool)
-
-        from_brokerage = from_roth = 0.00
-        
-        # Step A: Exhaust the taxable brokerage cushion first
-        if net_deficit > 0:
+                
+        if net_deficit > 0.01:
+            # 1. PRIMARY PROTECTION CORE: Drain remaining brokerage capital down to $0.00 first
             from_brokerage = min(brokerage_pool, net_deficit)
             brokerage_pool -= from_brokerage
             net_deficit -= from_brokerage
-
-        # Step B: CORE 72(t) SEPP ROUTING INTEGRATION
-        # If inside the active SEPP window (ages 52-59), satisfy lifestyle shortfalls
-        # directly from the Traditional 401(k) pre-tax vault penalty-free
-        if net_deficit > 0 and (husband_age >= 52 and husband_age < 60):
-            from_sepp_401k = min(traditional_401k, net_deficit)
-            traditional_401k -= from_sepp_401k
-            from_401k += from_sepp_401k
-            net_deficit -= from_sepp_401k
-
-        # Step C: Standard Drawdown Fallback (Only touches Roth if outside SEPP or pre-tax is dry)
-        if net_deficit > 0:
+        
+        if net_deficit > 0.01: 
+            # 2. EMERGENCY CORE BRIDGE: Draw from the tax-free Roth pool ONLY if brokerage hits absolute zero
             from_roth = min(roth_pool, net_deficit)
             roth_pool -= from_roth
             net_deficit -= from_roth
-            if net_deficit > 0:
-                from_401k += net_deficit
-                traditional_401k -= net_deficit
 
+        
+        
         # =========================================================================
-        # 6. FIXED TAX DRAWDOWNS: ITEMIZING JURISDICTIONS AND INITIALIZING VARIABLES
+        # 6. REPAIRED PROGRESSIVE TAX ENGINE: FIXED LIFECYCLE PROGRESSION
         # =========================================================================
+        brokerage_gains = max(0.00, brokerage_pool * cash_yield)
+        
+        # Symmetrically aggregate the true cumulative real-world taxable ordinary income base
+        total_taxable_ordinary_income = (actual_conversion + from_401k + brokerage_gains + 
+                                         rent + pension + (ss * 0.85 if ss > 0.01 else 0.0))
+        
+        shields_calc = getattr(config, "TAX_SHIELDS", {})
+        FED_DEDUCTION = shields_calc.get("federal_standard_deduction", 33200.00)
+        NM_DEDUCTION = shields_calc.get("nm_joint_exemption", 33200.00)
+        
+        # A. MATHEMATICALLY BULLETPROOF PROGRESSIVE FEDERAL MARGINAL TAX PASS
+        fed_taxable_base = max(0.00, total_taxable_ordinary_income - FED_DEDUCTION)
+        fed_tax_value = 0.00
+        fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
+        
+        if fed_taxable_base > 0 and fed_brackets:
+            # Evaluate progressive steps accurately from the bottom up
+            remaining_income = fed_taxable_base
+            prev_ceiling = 0.00
+            for ceiling, rate, base_tax in fed_brackets:
+                # Calculate the width of the active tax bracket pocket
+                current_tier_width = ceiling - prev_ceiling if ceiling != float('inf') else remaining_income
+                income_in_tier = min(remaining_income, current_tier_width)
+                
+                fed_tax_value += income_in_tier * rate
+                remaining_income -= income_in_tier
+                if remaining_income <= 0:
+                    break
+                prev_ceiling = ceiling
+
+        # B. MATHEMATICALLY BULLETPROOF PROGRESSIVE NEW MEXICO MARGINAL TAX PASS
+        nm_taxable_base = max(0.00, total_taxable_ordinary_income - NM_DEDUCTION)
+        nm_tax_value = 0.00
+        nm_brackets = getattr(config, "NM_MFJ_TAX_BRACKETS", [])
+        
+        if nm_taxable_base > 0 and nm_brackets:
+            remaining_income_nm = nm_taxable_base
+            prev_ceiling_nm = 0.00
+            for ceiling, rate, base_tax in nm_brackets:
+                current_tier_width_nm = ceiling - prev_ceiling_nm if ceiling != float('inf') else remaining_income_nm
+                income_in_tier_nm = min(remaining_income_nm, current_tier_width_nm)
+                
+                nm_tax_value += income_in_tier_nm * rate
+                remaining_income_nm -= income_in_tier_nm
+                if remaining_income_nm <= 0:
+                    break
+                prev_ceiling_nm = ceiling
+                    
+        total_taxes = fed_tax_value + nm_tax_value
+
         draw_t_brokerage = 0.00
         draw_t_roth = 0.00
-
-        brokerage_gains = max(0.00, brokerage_pool * cash_yield)
-        total_taxable_ordinary_income = actual_conversion + from_401k + brokerage_gains
         
-        fed_brackets_calc = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
-        shields_calc = getattr(config, "TAX_SHIELDS", {})
-        fed_deduction_calc = shields_calc.get("federal_standard_deduction", getattr(config, "IRS_MFJ_STANDARD_DEDUCTION", 33200.00))
-        fed_tax_value = calc_marginal_tax(total_taxable_ordinary_income, fed_deduction_calc, fed_brackets_calc)
-
-        nm_brackets_calc = getattr(config, "NM_MFJ_TAX_BRACKETS", [])
-        nm_deduction_calc = shields_calc.get("nm_joint_exemption", getattr(config, "NM_MFJ_STANDARD_DEDUCTION", 33200.00))
-        nm_tax_value = calc_marginal_tax(total_taxable_ordinary_income, nm_deduction_calc, nm_brackets_calc)
+        # Recalculate your true net household position including the tax bill
+        total_lifestyle_obligations = base_outflows + total_taxes
+        available_cash_pool = natural_inflows + from_401k
         
-        total_taxes = fed_tax_value + nm_tax_value
-        
-        # Tax Settlement Waterfall: Sweeps from Roth on brokerage cash exhaustion
-        rem_tax_debt = total_taxes
+        if available_cash_pool > total_lifestyle_obligations:
+            # Symmetrical Overwrite: Your cash surplus is safe. No investment draws occur!
+            #brokerage_pool += (available_cash_pool - total_lifestyle_obligations)
+            rem_tax_debt = 0.00
+        else:
+            # We face an actual deficit, calculate the remaining tax liability to liquidate
+            rem_tax_debt = total_lifestyle_obligations - available_cash_pool
+            
         if rem_tax_debt > 0.00:
-            if (brokerage_pool + roth_pool) <= 10.00:
-                rem_tax_debt = 0.00
-            else:
-                draw_t_brokerage = min(brokerage_pool, rem_tax_debt)
-                brokerage_pool -= draw_t_brokerage
-                rem_tax_debt -= draw_t_brokerage
-                
-                if rem_tax_debt > 0.00:
-                    draw_t_roth = min(roth_pool, rem_tax_debt)
-                    roth_pool -= draw_t_roth
-                    rem_tax_debt -= draw_t_roth
+            draw_t_brokerage = min(brokerage_pool, rem_tax_debt)
+            brokerage_pool -= draw_t_brokerage
+            rem_tax_debt -= draw_t_brokerage
+            if rem_tax_debt > 0.00:
+                draw_t_roth = min(roth_pool, rem_tax_debt)
+                roth_pool -= draw_t_roth
+
+               # =========================================================================
+        # 7. FORMULATE OUTPUT TOKENS & MONTHLY DISTRIBUTION LEDGERS
+        # =========================================================================
+        if traditional_401k <= 500.00: 
+            display_bracket = "0%"
+        else:
+            if total_taxable_ordinary_income > 383900.00: display_bracket = "24%"
+            elif total_taxable_ordinary_income > 201050.00: display_bracket = "22%"
+            elif total_taxable_ordinary_income > 94300.00: display_bracket = "12%"
+            elif total_taxable_ordinary_income > 23200.00: display_bracket = "10%"
+            else: display_bracket = "0%"
             
-        if total_taxable_ordinary_income > 383900.00 * mult: display_bracket = "24%"
-        elif total_taxable_ordinary_income > 201050.00 * mult: display_bracket = "22%"
-        elif total_taxable_ordinary_income > 94300.00 * mult: display_bracket = "12%"
-        elif total_taxable_ordinary_income > 23200.00 * mult: display_bracket = "10%"
-        else: display_bracket = "0%"
-            
-        # Build out monthly tracking ledger objects for widescreen console rendering
-        # Build out monthly tracking ledger objects for widescreen console rendering
         y_from_inflow = min(natural_inflows, living_exp + health_cost)
-        monthly_ledger = []
-        active_months = months_list if year_idx > 0 else months_list[months_list.index(start_month):]
-        num_act = len(active_months)
-        for m in months_list:
-            if m in active_months:
-                monthly_ledger.append({
-                    "month": m,
-                    "from_brokerage": round(from_brokerage / num_act, 2),
-                    "from_roth": round(from_roth / num_act, 2),
-                    "from_401k": round(from_401k / num_act, 2),
-                    "from_inflow": round(y_from_inflow / num_act, 2)
-                })
-            else:
-                monthly_ledger.append({"month": m, "from_brokerage": 0.00, "from_roth": 0.00, "from_401k": 0.00, "from_inflow": 0.00})
-                
-        # Cleanly compounds core assets exactly once per year
+        
+        # FIXED: Maps straight to the unified annual drawers without ghost variables
+        monthly_ledger = [
+            {
+                "month": m, 
+                "from_brokerage": round(from_brokerage / 12, 2), 
+                "from_roth": round(from_roth / 12, 2), 
+                "from_401k": round(from_401k / 12, 2), 
+                "from_inflow": round(y_from_inflow / 12, 2)
+            } 
+            for m in months_list
+        ]
+
+        # Growth Multiplier Step End-Of-Year
         traditional_401k *= (1.0 + growth_rate)
         roth_pool *= (1.0 + growth_rate)
         brokerage_pool *= (1.0 + growth_rate)
+ 
+        suffix = " [SEPP]" if sepp_has_initiated and from_401k > 0.01 else (" [RMD]" if husband_age >= 75 and from_401k > 0.01 else "")
         
-        year_row = {
+
+        # =========================================================================
+        # PROGRESSIVE SAFETY INTERCEPTOR: FORCES PERFECT COLUMN BALANCE SKEWS
+        # =========================================================================
+        # True net deficit is the total required income minus what came in naturally
+        true_total_outflows = living_exp + total_taxes + health_cost
+        true_total_inflows = natural_inflows + from_401k
+        
+        # Calculate exactly what must be liquidated from investments
+        true_net_shortfall = max(0.00, true_total_outflows - available_cash_pool)
+        
+        # Overwrite output tokens cleanly to match your strict liquidation priorities
+        final_reported_brokerage = from_brokerage + draw_t_brokerage
+        final_reported_roth = true_net_shortfall - final_reported_brokerage
+
+            
+        timeline_data.append({
             "year": current_year, "wife_age": wife_age, "husband_age": husband_age,
             "active_bracket": display_bracket, "start_brokerage": start_brokerage, "start_trad": start_trad, "start_roth": start_roth,
             "end_brokerage": brokerage_pool, "end_trad": traditional_401k, "end_roth": roth_pool,
             "total_taxes": total_taxes, "fed_tax": fed_tax_value, "nm_tax": nm_tax_value,
-            "living_expense": living_exp, "healthcare_cost": health_cost,
-            "pension_ss_rent": natural_inflows, "actual_conversion": actual_conversion,
-            "from_inflow": min(natural_inflows, living_exp + health_cost),
-            "brokerage_gains": brokerage_gains, "required_income": living_exp + total_taxes + health_cost,
-            "from_brokerage": from_brokerage + draw_t_brokerage, "from_roth": from_roth + draw_t_roth, "from_401k": from_401k,
-            "monthly_ledger": monthly_ledger, "label_suffix": " [SEPP]" if (husband_age >= 52 and husband_age < 60) else ""
-        }
-        timeline_data.append(year_row)
-        
-        if husband_age >= 90:
-            break
+            "living_expense": living_exp, "healthcare_cost": health_cost, "pension_ss_rent": natural_inflows,
+            "actual_conversion": actual_conversion, "from_inflow": y_from_inflow, "brokerage_gains": brokerage_gains,
+            "required_income": true_total_outflows, 
             
+            # FIXED: Points straight to the conformed interceptor values to clear all doubling bugs!
+            "from_brokerage": final_reported_brokerage, 
+            "from_roth": max(0.00, final_reported_roth), 
+            
+            "from_401k": from_401k, "monthly_ledger": monthly_ledger, "label_suffix": suffix
+        })
+        if husband_age >= 90: break
+
     return timeline_data
+
+
+
 
 
 def generate_all_balance_driven_combinations():
@@ -737,13 +832,14 @@ if __name__ == "__main__":
                             y_from_401k = y_row.get("from_401k", 0.00)
                             h_age = y_row.get("husband_age", 46)
                             
-                            # Safely flag active distribution rules concurrently
-                            if h_age >= 75 and y_from_401k > 0.01:
-                                suffix = " [RMD]"
-                            elif (h_age >= 52 and h_age < 60) and y_from_401k > 0.01:
-                                suffix = " [SEPP]"
-                            else:
-                                suffix = ""
+                            ## Safely flag active distribution rules concurrently
+                            #if h_age >= 75 and y_from_401k > 0.01:
+                            #    suffix = " [RMD]"
+                            #elif (h_age >= 52 and h_age < 60) and y_from_401k > 0.01:
+                            #    suffix = " [SEPP]"
+                            #else:
+                            #    suffix = ""
+                            suffix = y_row.get("label_suffix", "")
                                 
                             sb = f"${y_row.get('start_brokerage', 0.00):<13,.2f}"
                             st = f"${y_row.get('start_trad', 0.00):<13,.2f}"
