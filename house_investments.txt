@@ -1,0 +1,27 @@
+
+📊 Side-by-Side Year 1 Tax Impact Matrix
+
+Assuming your initial retirement conversion steps place you squarely in the 22% Federal bracket and a 4.9% New Mexico marginal state bracket, here is exactly how your $443,000.00 house cash pool performs in its first full year:
+
+Cash Performance Metric	Fidelity Government (SPAXX)	Fidelity Treasury Only (FDLXX)	The Structural Net Impact
+Gross Yield Setting	~4.50%	~4.15%	SPAXX leads by ~0.35% upfront.
+Gross Annual Gains	$19,935.00	$18,384.50	SPAXX generates $1,550.50 more raw interest.
+Federal Tax Owed (22%)	$4,385.70	$4,044.59	Paid on ordinary income forms [INDEX_9].
+NM State Tax Owed (4.9%)	$976.82	$63.02	FDLXX saves you $913.80 in State Tax!
+Total Combined Tax Bill	$5,362.52	$4,107.61	FDLXX cuts your tax friction significantly.
+Net Cash Kept in Pocket	$14,572.48	$14,276.89	SPAXX wins out-of-pocket by only $295.59
+
+(Note: These figures assume a full-year lock on the starting principal baseline to illustrate the raw earning capability. In your live retirement loop, your net tax bills will scale down as you drain the accounts monthly to pay for your everyday living expenses.)
+
+🔬 The Structural Verdict: Which Fund to Choose?
+
+Even though SPAXX finishes with a tiny $295.59 advantage after taxes due to its higher initial interest rate, FDLXX is highly recommended as your primary choice for a worst-case downturn test.
+Here are the two distinct strategic reasons why choosing FDLXX is the superior wealth-preservation move:
+
+1. Absolute Institutional Safety
+
+SPAXX holds short-term corporate debt and government agency repurchase agreements. FDLXX holds 100% direct U.S. Treasury bills backed by the full faith and credit of the United States government. When you are running a retirement model to mimic what happens when things don't go well, moving your primary cash bridge into the safest asset class on earth removes all institutional counterparty risk.
+
+2. The Tax Bracket Shield
+
+If your future voluntary Roth conversions unexpectedly push your household further up into a higher New Mexico progressive state tax bracket, SPAXX's state tax bill will expand rapidly. Because FDLXX protects your gains from state tax drag, it acts as an automatic buffer, keeping your cash bridge safe from state-level tax spikes across your entire early retirement runway!

@@ -39,10 +39,15 @@ TOTAL_INITIAL_BROKERAGE = (
 )
 
 # 3. Market and Yield Economic Parameters (Synchronized Reality Baseline)
+#GROWTH_RATE = 0.065            # 6.5% Nominal Portfolio Core Growth Rate
+#CASH_YIELD_RATE = 0.035        # 3.5% Long-Term Yield Base (HYSA / Cash T-Bills)
+#INFLATION_RATE = 0.030         # 3.0% Baseline Consumer Inflation (CPI Long-Term)
+
+
 GROWTH_RATE = 0.065            # 6.5% Nominal Portfolio Core Growth Rate
-CASH_YIELD_RATE = 0.035        # 3.5% Long-Term Yield Base (HYSA / Cash T-Bills)
-INFLATION_RATE = 0.030         # 3.0% Baseline Consumer Inflation (CPI Long-Term)
-#INFLATION_RATE = 0.0         # 3.0% Baseline Consumer Inflation (CPI Long-Term)
+CASH_YIELD_RATE = 0.01        # 3.5% Long-Term Yield Base (HYSA / Cash T-Bills)
+INFLATION_RATE = 0.0         # 3.0% Baseline Consumer Inflation (CPI Long-Term)
+
 
 # 4. Cash Inflow Stream Vectors
 ANNUAL_PENSION_VALUE = 35250.00      # Wife Pension Income Stream (Age 61)
