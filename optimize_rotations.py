@@ -163,30 +163,44 @@ def run_financial_simulation(rotation_list):
     """
     Unrestricted Aggressive Clean-Out Simulation Engine.
     PROGRESSIVE TAX & SHORTFALL INSULATED MODE: Completely eliminates variable lag,
-    accounts for 100% of pension and 85% of Social Security taxation, and calculates 
+    accounts for 100% of pension and 85% of Social Security taxation, and calculates
     progressive liabilities BEFORE the waterfall to ensure full cash flow balance.
+
+    DYNAMIC ALLOCATION MODES ACTIVATED:
+    - Extracts CASH_BUFFER_TARGET and EQUITY_DIVIDEND_YIELD natively from central config.
+    - Accurately shields capital growth from unnecessary ordinary income tax drag.
     """
     traditional_401k = config.STARTING_BALANCES["trad_401k"]
     roth_pool = config.STARTING_BALANCES["roth_pool"]
-    brokerage_pool = (config.STARTING_BALANCES["brokerage_1"] + config.STARTING_BALANCES["brokerage_2"] + 
+    brokerage_pool = (config.STARTING_BALANCES["brokerage_1"] + config.STARTING_BALANCES["brokerage_2"] +
                       config.STARTING_BALANCES["house_sale_proceeds"] + config.STARTING_BALANCES["house_equity_invested"])
-    
+
     growth_rate = config.GROWTH_RATE
     cash_yield = config.CASH_YIELD_RATE
     spending = config.SPENDING
-    
+
+    # --- DYNAMIC CONFIG ASSET ALLOCATION EXTRINSICS ---
+    cash_buffer_target = getattr(config, "CASH_BUFFER_TARGET", 180000.00)
+    equity_div_yield = getattr(config, "EQUITY_DIVIDEND_YIELD", 0.014)
+
     start_year = getattr(config, "RET_START_YEAR", 2027)
     wife_start_age = config.WIFE_START_AGE
     husband_start_age = config.HUSBAND_START_AGE
     months_list = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    
+
     timeline_data = []
+    roth_contribution_basis = min(roth_pool, 140000.00)
     active_conversion_ladder = {}
-    
+
     for year_idx in range(44):
         current_year = start_year + year_idx
         wife_age = wife_start_age + year_idx
         husband_age = husband_start_age + year_idx
+        if current_year==start_year:
+            income_earned=getattr(config, "INCOME_EARNED", 80000.00)
+            savings=getattr(config, "SAVINGS", 40000.00)
+        else:
+            income_earned=0
         
         # Central structural macro inflation and COLA pipeline scalar
         mult = (1.0 + config.INFLATION_RATE) ** year_idx
@@ -200,7 +214,7 @@ def run_financial_simulation(rotation_list):
         rent = spending.get("phase1_rental_income", 12000.00) if year_idx < 7 else 0.0
         pension = config.ANNUAL_PENSION_VALUE * mult if wife_age >= 61 else 0.0
         ss = config.ANNUAL_SOCIAL_SECURITY * mult if wife_age >= 62 else 0.0
-        natural_inflows = rent + pension + ss
+        natural_inflows = rent + pension + ss+income_earned
         
         # 2. Living Expenditures & Lifestyle Aging Multipliers
         living_exp = (spending.get("phase2_living_expense", 100000.00) if year_idx >= 7 else spending.get("phase1_living_expense", 65000.00)) * mult
@@ -251,11 +265,21 @@ def run_financial_simulation(rotation_list):
             traditional_401k -= from_401k
 
         # =========================================================================
-        # 4. TAX DRAWDOWNS SECTOR: PROGRESSIVE LOOPING ENGINE
+        # 4. TAX DRAWDOWNS SECTOR: PROGRESSIVE LOOPING ENGINE (HYBRID ASSET ALLOCATION)
         # =========================================================================
-        brokerage_gains = max(0.00, brokerage_pool * cash_yield)
+        # Segment the active brokerage pool based on your config safety cash targets
+        actual_cash_held = min(brokerage_pool, cash_buffer_target)
+        actual_equities_held = max(0.00, brokerage_pool - actual_cash_held)
+        
+        # Calculate isolated ordinary yields vs tax-efficient equity distributions
+        cash_interest_gains = actual_cash_held * cash_yield
+        equity_dividend_gains = actual_equities_held * equity_div_yield
+        
+        # Consolidate reportable income to feed your progressive tax tiers cleanly
+        brokerage_gains = cash_interest_gains + equity_dividend_gains
+        
         taxable_ss = ss * 0.85 if ss > 0.01 else 0.0
-        total_taxable_ordinary_income = actual_conversion + from_401k + brokerage_gains + rent + pension + taxable_ss
+        total_taxable_ordinary_income = actual_conversion + from_401k + brokerage_gains + rent + pension + taxable_ss+income_earned
         
         shields_calc = getattr(config, "TAX_SHIELDS", {})
         FED_DEDUCTION = shields_calc.get("federal_standard_deduction", 33200.00)
@@ -293,48 +317,96 @@ def run_financial_simulation(rotation_list):
                     
         total_taxes = fed_tax_value + nm_tax_value
 
+
         # =========================================================================
-        # 5. UNIFIED ShortFALL WATERFALL: Settle LIFESTYLE + TAX OBLIGATIONS TOGETHER
+        # 5. UNIFIED SHORTFALL WATERFALL WITH PENALTY SHIELD ENFORCEMENT
         # =========================================================================
         total_annual_expenditures = base_outflows + total_taxes
+
         available_cash_pool = natural_inflows + from_401k
-        
+
         from_brokerage = 0.00
         from_roth = 0.00
 
+        if income_earned!=0:
+            available_cash_pool=(rent+savings)
+
         if available_cash_pool >= total_annual_expenditures:
             surplus_cash = available_cash_pool - total_annual_expenditures
-            #brokerage_pool += surplus_cash
             net_deficit = 0.00
         else:
             net_deficit = max(0.00, total_annual_expenditures - available_cash_pool)
+        
+        if income_earned!=0:
+            net_deficit=(total_annual_expenditures-available_cash_pool)
 
+        # Drawdown Step A: Drain Taxable Brokerage Space First
         if net_deficit > 0.01:
             from_brokerage = min(brokerage_pool, net_deficit)
             brokerage_pool -= from_brokerage
             net_deficit -= from_brokerage
 
+        # Drawdown Step B: Enforce Advanced Roth Multi-Tier Ordering Rules
         if net_deficit > 0.01:
-            from_roth = min(roth_pool, net_deficit)
+            roth_drawdown_request = min(roth_pool, net_deficit)
+            remaining_to_pull = roth_drawdown_request
+
+            # Tier B.1: Pull from tax-free, penalty-free direct Roth Contributions first
+            if roth_contribution_basis >= remaining_to_pull:
+                roth_contribution_basis -= remaining_to_pull
+                remaining_to_pull = 0.00
+            else:
+                remaining_to_pull -= roth_contribution_basis
+                roth_contribution_basis = 0.00
+
+            # Tier B.2: If remainder exists, verify seasoned 5-year conversion vintages
+            if remaining_to_pull > 0.01:
+                if husband_age >= 59.5:
+                    # Over age 59.5, the 10% penalty vanishes entirely by law
+                    remaining_to_pull = 0.00
+                else:
+                    # Scan conversion vintages in chronological FIFO order
+                    for vintage_year in sorted(active_conversion_ladder.keys()):
+                        if current_year - vintage_year >= 5:
+                            available_seasoned_principal = active_conversion_ladder[vintage_year]
+                            if available_seasoned_principal >= remaining_to_pull:
+                                active_conversion_ladder[vintage_year] -= remaining_to_pull
+                                remaining_to_pull = 0.00
+                                break
+                            else:
+                                remaining_to_pull -= available_seasoned_principal
+                                active_conversion_ladder[vintage_year] = 0.00
+
+            # Tier B.3: PENALTY SHIELD WALL CHECK
+            if remaining_to_pull > 0.01:
+                # INVALID STRATEGY DETECTED: Strategy breached unseasoned conversions!
+                # Disqualify this run permutation completely by returning None.
+                return None
+
+            # Settle balances if the Roth allocation successfully cleared our penalty filters
+            from_roth = roth_drawdown_request
             roth_pool -= from_roth
             net_deficit -= from_roth
-            
-            if net_deficit > 0.01:
-                from_401k += net_deficit
-                traditional_401k -= net_deficit
+
+        # Drawdown Step C: Final Pre-Tax 401k Backstop
+        if net_deficit > 0.01:
+            from_401k += net_deficit
+            traditional_401k -= net_deficit
 
         # =========================================================================
         # 6. FORMULATE PROGRESSIVE BRACKET LABELS DYNAMICALLY
         # =========================================================================
-        if traditional_401k <= 500.00: 
-            display_bracket = "0%"
-        else:
-            if total_taxable_ordinary_income > 383900.00: display_bracket = "24%"
-            elif total_taxable_ordinary_income > 201050.00: display_bracket = "22%"
-            elif total_taxable_ordinary_income > 94300.00: display_bracket = "12%"
-            elif total_taxable_ordinary_income > 23200.00: display_bracket = "10%"
-            else: display_bracket = "0%"
             
+        if total_taxable_ordinary_income > 383900.00: 
+            display_bracket = "24%"
+        elif total_taxable_ordinary_income > 201050.00: 
+            display_bracket = "22%"
+        elif total_taxable_ordinary_income > 94300.00: 
+            display_bracket = "12%"
+        elif total_taxable_ordinary_income > 23200.00: 
+            display_bracket = "10%"
+        else: 
+            display_bracket = "0%"
         y_from_inflow = min(natural_inflows, living_exp + health_cost)
         monthly_ledger = [{"month": m, "from_brokerage": round(from_brokerage/12, 2), "from_roth": round(from_roth/12, 2), "from_401k": round(from_401k/12, 2), "from_inflow": round(y_from_inflow/12, 2)} for m in months_list]
 
@@ -344,6 +416,7 @@ def run_financial_simulation(rotation_list):
         brokerage_pool *= (1.0 + growth_rate)
         
         suffix = " [RMD]" if husband_age >= 75 and from_401k > 0.01 else ""
+
 
         timeline_data.append({
             "year": current_year, "wife_age": wife_age, "husband_age": husband_age,
