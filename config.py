@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+5# -*- coding: utf-8 -*-
 """
 CENTRALIZED RETIREMENT STRATEGY PARAMETERS COMMAND CENTER
 Modifying values here updates both compare.py and gen_excel.py instantly.
@@ -9,8 +9,10 @@ Aligns with inflation-adjusted tax structures across all operational runways.
 WIFE_START_AGE = 47
 HUSBAND_START_AGE = 46
 RET_START_YEAR=2027
-INCOME_EARNED=75000
-SAVINGS=47000
+#INCOME_EARNED=75000
+#SAVINGS=47000
+INCOME_EARNED=0
+SAVINGS=0
 
 # NEW PARAMETER: Specify the exact calendar month you choose to begin retirement
 # Options: "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -20,7 +22,7 @@ MAX_ALLOWED_SINGLE_YEAR_TAX = 200000.00
 
 #AVAILABLE_BRACKET_CHOICES = [0, 10, 12, 22, 24]
 #AVAILABLE_BRACKET_CHOICES = [22, 24]
-AVAILABLE_BRACKET_CHOICES = [12,22,24]
+AVAILABLE_BRACKET_CHOICES = [12,22]
 PHASE_1_DURATION_YEARS = 7  # Specify exactly how long Phase 1 (Low Income/Holiday) runs
 
 # 2. Starting Asset Balances
@@ -62,13 +64,13 @@ INFLATION_RATE = 0.030         # 3.0% Baseline Consumer Inflation (CPI Long-Term
 
 # 4. Cash Inflow Stream Vectors
 ANNUAL_PENSION_VALUE = 35250.00      # Wife Pension Income Stream (Age 61)
-ANNUAL_SOCIAL_SECURITY = 100000.00   # Social Security Income Stream (Age 62)
+ANNUAL_SOCIAL_SECURITY = 29000.00   # Social Security Income Stream (Age 62)
 
 # 5. Lifestyle Spending and Outflow Targets
 SPENDING = {
-    "phase1_living_expense": 80000.00,
+    "phase1_living_expense": 70000.00,
     "phase1_healthcare_cost": 0.00,
-    "phase1_rental_income": 12000,
+    "phase1_rental_income": 0,
     #"phase1_rental_income": 0.00,
     "phase2_living_expense": 100000.00,
     "phase2_healthcare_cost": 9600.00
