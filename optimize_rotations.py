@@ -393,20 +393,32 @@ def run_financial_simulation(rotation_list):
             from_401k += net_deficit
             traditional_401k -= net_deficit
 
+                # =========================================================================
+        # 6. FORMULATE PROGRESSIVE BRACKET LABELS DYNAMICALLY (REFACTORED)
         # =========================================================================
-        # 6. FORMULATE PROGRESSIVE BRACKET LABELS DYNAMICALLY
-        # =========================================================================
-            
-        if total_taxable_ordinary_income > 383900.00: 
-            display_bracket = "24%"
-        elif total_taxable_ordinary_income > 201050.00: 
-            display_bracket = "22%"
-        elif total_taxable_ordinary_income > 94300.00: 
-            display_bracket = "12%"
-        elif total_taxable_ordinary_income > 23200.00: 
-            display_bracket = "10%"
-        else: 
-            display_bracket = "0%"
+        display_bracket = "0%"
+        fed_brackets = getattr(config, "IRS_MFJ_TAX_BRACKETS", [])
+
+        # Calculate true taxable income relative to the standard deduction baseline
+        net_taxable_for_label = max(0.00, total_taxable_ordinary_income - FED_DEDUCTION)
+
+        if net_taxable_for_label > 0 and fed_brackets:
+            prev_ceiling = 0.00
+            for ceiling, rate, base_tax in fed_brackets:
+                # Scale the bracket ceiling dynamically with inflation
+                scaled_ceiling = ceiling * mult if ceiling != float('inf') else float('inf')
+                scaled_prev_ceiling = prev_ceiling * mult
+
+                # Check which progressive tier the net taxable income falls into
+                if scaled_prev_ceiling < net_taxable_for_label <= scaled_ceiling:
+                    display_bracket = f"{int(rate * 100)}%"
+                    break
+                prev_ceiling = ceiling
+            else:
+                # Fallback for infinity/highest bracket edge cases
+                if fed_brackets:
+                    display_bracket = f"{int(fed_brackets[-1][1] * 100)}%"
+
         y_from_inflow = min(natural_inflows, living_exp + health_cost)
         monthly_ledger = [{"month": m, "from_brokerage": round(from_brokerage/12, 2), "from_roth": round(from_roth/12, 2), "from_401k": round(from_401k/12, 2), "from_inflow": round(y_from_inflow/12, 2)} for m in months_list]
 

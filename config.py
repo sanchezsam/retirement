@@ -11,12 +11,12 @@ HUSBAND_START_AGE = 46
 RET_START_YEAR=2027
 #INCOME_EARNED=75000
 #SAVINGS=47000
-INCOME_EARNED=0
-SAVINGS=0
+INCOME_EARNED=117093
+SAVINGS=470000
 
 # NEW PARAMETER: Specify the exact calendar month you choose to begin retirement
 # Options: "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-RETIREMENT_START_MONTH = "Feb"
+RETIREMENT_START_MONTH = "Jun"
 
 MAX_ALLOWED_SINGLE_YEAR_TAX = 200000.00
 
@@ -29,8 +29,7 @@ PHASE_1_DURATION_YEARS = 7  # Specify exactly how long Phase 1 (Low Income/Holid
 STARTING_BALANCES = {
     "brokerage_1": 71435.69,
     "brokerage_2": 15673.00,
-    #"house_sale_proceeds": 443000.00,  # Re-injects your $300k sales proceed shield
-    "house_sale_proceeds": 400000.00,  # Re-injects your $300k sales proceed shield
+    "house_sale_proceeds": 443000.00,  # Re-injects your $300k sales proceed shield
     "house_equity_invested": 0.00,
     "trad_401k": 1476432.85,
     "roth_pool": 143564.91             # CRITICAL: Grandfathered baseline pool
