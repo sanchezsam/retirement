@@ -9,30 +9,31 @@ Aligns with inflation-adjusted tax structures across all operational runways.
 WIFE_START_AGE = 47
 HUSBAND_START_AGE = 46
 RET_START_YEAR=2027
-#INCOME_EARNED=75000
-#SAVINGS=47000
+INCOME_EARNED=0
+SAVINGS=0
+RETIREMENT_START_MONTH = "Mar"
 INCOME_EARNED=117093
-SAVINGS=470000
+SAVINGS=57000
+#RETIREMENT_START_MONTH = "Jun"
 
 # NEW PARAMETER: Specify the exact calendar month you choose to begin retirement
 # Options: "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-RETIREMENT_START_MONTH = "Jun"
 
 MAX_ALLOWED_SINGLE_YEAR_TAX = 200000.00
 
 #AVAILABLE_BRACKET_CHOICES = [0, 10, 12, 22, 24]
 #AVAILABLE_BRACKET_CHOICES = [22, 24]
-AVAILABLE_BRACKET_CHOICES = [12,22]
+AVAILABLE_BRACKET_CHOICES = [12,22,24]
 PHASE_1_DURATION_YEARS = 7  # Specify exactly how long Phase 1 (Low Income/Holiday) runs
 
 # 2. Starting Asset Balances
 STARTING_BALANCES = {
     "brokerage_1": 71435.69,
     "brokerage_2": 15673.00,
-    "house_sale_proceeds": 443000.00,  # Re-injects your $300k sales proceed shield
+    "house_sale_proceeds": 436000.00,  # Re-injects your $300k sales proceed shield
     "house_equity_invested": 0.00,
     "trad_401k": 1476432.85,
-    "roth_pool": 143564.91             # CRITICAL: Grandfathered baseline pool
+    "roth_pool": 238000             # CRITICAL: Grandfathered baseline pool
 }
 
 TOTAL_INITIAL_BROKERAGE = (
@@ -48,7 +49,7 @@ TOTAL_INITIAL_BROKERAGE = (
 #INFLATION_RATE = 0.030         # 3.0% Baseline Consumer Inflation (CPI Long-Term)
 
 # --- Asset Allocation Guardrails ---
-CASH_BUFFER_TARGET = 180000.00  
+CASH_BUFFER_TARGET = 140000.00  
 EQUITY_DIVIDEND_YIELD = 0.014  
 GROWTH_RATE = 0.065            # 6.5% Nominal Portfolio Core Growth Rate
 CASH_YIELD_RATE = 0.035        # 3.5% Long-Term Yield Base (HYSA / Cash T-Bills)
@@ -67,7 +68,7 @@ ANNUAL_SOCIAL_SECURITY = 29000.00   # Social Security Income Stream (Age 62)
 
 # 5. Lifestyle Spending and Outflow Targets
 SPENDING = {
-    "phase1_living_expense": 70000.00,
+    "phase1_living_expense": 80000.00,
     "phase1_healthcare_cost": 0.00,
     "phase1_rental_income": 0,
     #"phase1_rental_income": 0.00,

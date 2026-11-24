@@ -217,10 +217,11 @@ def run_financial_simulation(rotation_list):
         natural_inflows = rent + pension + ss+income_earned
         
         # 2. Living Expenditures & Lifestyle Aging Multipliers
-        living_exp = (spending.get("phase2_living_expense", 100000.00) if year_idx >= 7 else spending.get("phase1_living_expense", 65000.00)) * mult
+        phase_1_duration = getattr(config, "PHASE_1_DURATION_YEARS", '7')
+        living_exp = (spending.get("phase2_living_expense", 100000.00) if year_idx >= phase_1_duration else spending.get("phase1_living_expense", 65000.00)) * mult
         if wife_age >= 70: living_exp *= config.LIFESTYLE_AGING_MODIFIERS.get("age_70_slow_go", 0.85)
         if wife_age >= 80: living_exp *= config.LIFESTYLE_AGING_MODIFIERS.get("age_80_no_go", 0.70)
-        health_cost = spending.get("phase2_healthcare_cost", 9600.00) * mult if year_idx >= 7 else 0.0
+        health_cost = spending.get("phase2_healthcare_cost", 9600.00) * mult if year_idx >= phase_1_duration else 0.0
         base_outflows = living_exp + health_cost
 
         # =========================================================================
